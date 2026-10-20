@@ -1,13 +1,13 @@
-# 🏥 API de Gestión de Citas Médicas
+# API de Gestión de Citas Médicas
 
 API RESTful desarrollada con **C# y .NET** para que una clínica privada pueda **registrar, consultar, reprogramar, cancelar y eliminar citas médicas** de forma ordenada, reemplazando las agendas físicas y las confirmaciones por llamada telefónica.
 
-> **Curso:** Desarrollo de Servicios Web · Escuela de Tecnología – Zegel · **Evaluación parcial**
-> **Repositorio:** `https://github.com/<usuario>/ClinicaCitas` *(reemplazar por el enlace real)*
+> **Curso:** Desarrollo de Servicios Web
+> **Repositorio:** `https://github.com/omar4lzamora12-afk/ClinicaCitas`.
 
 ---
 
-## 📑 Contenido
+## Contenido
 
 1. [Descripción del proyecto](#1-descripción-del-proyecto)
 2. [Tecnologías](#2-tecnologías)
@@ -35,11 +35,11 @@ API RESTful desarrollada con **C# y .NET** para que una clínica privada pueda *
 
 **Solución.** Una API REST que centraliza la gestión de **pacientes**, **médicos** y **citas**, con reglas de negocio que evitan los errores típicos de una agenda manual:
 
-- ✅ No se puede reservar dos veces el mismo horario con el mismo médico (ni dos citas simultáneas para un paciente).
-- ✅ Solo se atiende dentro del horario de la clínica (08:00–18:00, de lunes a sábado).
-- ✅ Las citas siguen un ciclo de vida controlado: `Programada → Confirmada → Atendida` o `Cancelada`.
-- ✅ No se pueden borrar pacientes o médicos que tengan citas (integridad referencial).
-- ✅ Todas las respuestas —de éxito y de error— tienen la misma estructura JSON.
+-  No se puede reservar dos veces el mismo horario con el mismo médico (ni dos citas simultáneas para un paciente).
+-  Solo se atiende dentro del horario de la clínica (08:00–18:00, de lunes a sábado).
+-  Las citas siguen un ciclo de vida controlado: `Programada → Confirmada → Atendida` o `Cancelada`.
+-  No se pueden borrar pacientes o médicos que tengan citas (integridad referencial).
+-  Todas las respuestas —de éxito y de error— tienen la misma estructura JSON.
 
 **Sin base de datos:** según el alcance del curso, la información se guarda **en memoria** (colecciones `Dictionary`/`List`) y se reinicia al apagar la aplicación. Al iniciar se cargan datos de ejemplo para poder probar de inmediato.
 
@@ -59,14 +59,14 @@ API RESTful desarrollada con **C# y .NET** para que una clínica privada pueda *
 
 - **.NET SDK 8.0 o superior** → verifica con `dotnet --version` ([descargar](https://dotnet.microsoft.com/download)).
 - **Git** para clonar el repositorio.
-- *(Opcional)* **Postman** para ejecutar la colección de pruebas, o **Node.js** para usar Newman por consola.
+- **Postman** para ejecutar la colección de pruebas, o **Node.js** para usar Newman por consola.
 - Conexión a internet la primera vez (para descargar el paquete de Swagger al restaurar dependencias).
 
 ## 4. Instalación y ejecución
 
 ```bash
 # 1. Clonar el repositorio
-git clone https://github.com/<usuario>/ClinicaCitas.git
+git clone https://github.com/omar4lzamora12-afk/ClinicaCitas.git
 cd ClinicaCitas
 
 # 2. Restaurar dependencias y compilar
@@ -491,7 +491,6 @@ El puerto se define en `src/ClinicaCitas.Api/Properties/launchSettings.json` (po
 | *[Nombre completo 2]* | Lógica de negocio | Servicios, reglas de negocio, excepciones y manejo centralizado de errores |
 | *[Nombre completo 3]* | API, pruebas y documentación | Controladores, DTOs y validaciones, Swagger, colección de Postman, README e informe |
 
-*(Ajustar nombres y responsabilidades según la distribución real del trabajo.)*
 
 ## 15. Cumplimiento de la rúbrica
 

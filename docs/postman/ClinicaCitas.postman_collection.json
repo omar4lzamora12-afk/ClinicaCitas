@@ -1,0 +1,3326 @@
+{
+  "info": {
+    "_postman_id": "d2147c76-0763-44f5-8e4f-00e82fca9d81",
+    "name": "API Citas Médicas – Clínica (Pruebas funcionales)",
+    "description": "Colección de pruebas funcionales de la **API RESTful de Gestión de Citas Médicas** (C# / .NET).\n\n### Cómo usarla\n1. Levante la API: `dotnet run --project src/ClinicaCitas.Api` (queda en `http://localhost:5080`).\n2. Importe esta colección (y el entorno `ClinicaCitas.local`) en Postman.\n3. Ejecute la colección completa con **Collection Runner** (en orden) o cada carpeta por separado.\n\n### Qué incluye\n- Cada petición tiene **pruebas automáticas** (pestaña *Tests*): código HTTP, estructura de la respuesta y reglas de negocio.\n- Las fechas y los DNI/colegiaturas se **generan dinámicamente** (pre-request), por lo que la colección se puede ejecutar varias veces.\n- Las variables `pacienteId`, `medicoId`, `citaId`... se guardan solas entre peticiones.\n\n### Códigos HTTP que se verifican\n200, 201 (con `Location`), 204, 400, 404, 405, 409, 415 y 422.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "event": [
+    {
+      "listen": "prerequest",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "// Calcula fechas relativas a HOY para que la colección funcione cualquier día:",
+          "// la cita siempre cae en el futuro (3 días después) y nunca en domingo.",
+          "const pad = n => String(n).padStart(2, \"0\");",
+          "const dia = d => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;",
+          "const iso = (d, h, m) => `${dia(d)}T${pad(h)}:${pad(m)}:00`;",
+          "",
+          "const base = new Date();",
+          "base.setDate(base.getDate() + 3);",
+          "while (base.getDay() === 0) { base.setDate(base.getDate() + 1); }   // 0 = domingo → pasar al lunes",
+          "",
+          "const domingo = new Date();",
+          "domingo.setDate(domingo.getDate() + 1);",
+          "while (domingo.getDay() !== 0) { domingo.setDate(domingo.getDate() + 1); }",
+          "",
+          "pm.collectionVariables.set(\"fechaDia\", dia(base));",
+          "pm.collectionVariables.set(\"fechaCita\", iso(base, 10, 0));          // 10:00 (dentro del horario)",
+          "pm.collectionVariables.set(\"fechaReprogramada\", iso(base, 11, 0));  // 11:00",
+          "pm.collectionVariables.set(\"fechaFueraHorario\", iso(base, 22, 0));  // 22:00 (la clínica cierra a las 18:00)",
+          "pm.collectionVariables.set(\"fechaDomingo\", iso(domingo, 10, 0));    // domingo (no se atiende)",
+          "pm.collectionVariables.set(\"fechaPasada\", \"2020-01-15T10:00:00\");   // fecha pasada"
+        ]
+      }
+    }
+  ],
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:5080",
+      "type": "string"
+    }
+  ],
+  "item": [
+    {
+      "name": "00 · Información general",
+      "description": "Comprueba que la API está en línea.",
+      "item": [
+        {
+          "name": "Estado del servicio (raíz de la API)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Código HTTP 200\", () => pm.response.to.have.status(200));",
+                  "const r = pm.response.json();",
+                  "pm.test(\"La API informa que está en línea y dónde está su documentación\", () => {",
+                  "    pm.expect(r.estado).to.eql(\"En línea\");",
+                  "    pm.expect(r.version).to.eql(\"v1\");",
+                  "    pm.expect(r.documentacion).to.eql(\"/swagger\");",
+                  "    pm.expect(r.recursos).to.be.an(\"array\").with.lengthOf(3);",
+                  "});",
+                  "pm.test(\"Responde en menos de 2000 ms\", () => pm.expect(pm.response.responseTime).to.be.below(2000));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": []
+            },
+            "description": "Devuelve el nombre, la versión, el estado y los recursos disponibles. Útil como *health check*."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "01 · Pacientes",
+      "description": "CRUD completo de pacientes, validaciones y reglas de integridad (DNI único).",
+      "item": [
+        {
+          "name": "Registrar paciente (201)",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.collectionVariables.set(\"dniPaciente\", String(Math.floor(10000000 + Math.random() * 89999999)));  // DNI aleatorio: permite ejecutar la colección varias veces"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Código HTTP 201\", () => pm.response.to.have.status(201));",
+                  "pm.test(\"Contenido en formato JSON\", () => pm.expect(pm.response.headers.get(\"Content-Type\")).to.include(\"application/json\"));",
+                  "const r = pm.response.json();",
+                  "pm.test(\"Estructura estándar de éxito: exito, mensaje, datos, marcaDeTiempo\", () => {",
+                  "    pm.expect(r.exito).to.eql(true);",
+                  "    pm.expect(r.mensaje).to.be.a(\"string\").and.not.empty;",
+                  "    pm.expect(r).to.have.property(\"datos\");",
+                  "    pm.expect(r.marcaDeTiempo).to.be.a(\"string\");",
+                  "});",
+                  "pm.test(\"Incluye la cabecera Location apuntando al nuevo recurso\", () => {",
+                  "    pm.expect(pm.response.headers.get(\"Location\")).to.match(/\\/api\\/v1\\/pacientes\\/\\d+$/);",
+                  "});",
+                  "pm.test(\"El paciente quedó con Id, nombre completo y correo en minúsculas\", () => {",
+                  "    pm.expect(r.datos.id).to.be.a(\"number\");",
+                  "    pm.expect(r.datos.nombreCompleto).to.eql(\"María Elena Quispe Huamán\");",
+                  "    pm.expect(r.datos.dni).to.eql(pm.collectionVariables.get(\"dniPaciente\"));",
+                  "    pm.expect(r.datos.email).to.eql(\"maria.quispe@correo.com\");",
+                  "});",
+                  "pm.collectionVariables.set(\"pacienteId\", r.datos.id);",
+                  "pm.test(\"Responde en menos de 2000 ms\", () => pm.expect(pm.response.responseTime).to.be.below(2000));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/pacientes",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "pacientes"
+              ]
+            },
+            "description": "Crea un paciente. Devuelve **201 Created** con la cabecera `Location`. El correo se guarda en minúsculas.\n\nReglas: DNI de 8 dígitos único, celular de 9 dígitos que empiece con 9, correo válido, fecha de nacimiento entre 1900 y hoy.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"nombres\": \"María Elena\",\n  \"apellidos\": \"Quispe Huamán\",\n  \"dni\": \"{{dniPaciente}}\",\n  \"telefono\": \"987123456\",\n  \"email\": \"Maria.Quispe@Correo.com\",\n  \"fechaNacimiento\": \"1992-08-15\",\n  \"direccion\": \"Av. Arequipa 1450, Lince\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Listar pacientes (200)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Código HTTP 200\", () => pm.response.to.have.status(200));",
+                  "pm.test(\"Contenido en formato JSON\", () => pm.expect(pm.response.headers.get(\"Content-Type\")).to.include(\"application/json\"));",
+                  "const r = pm.response.json();",
+                  "pm.test(\"Estructura estándar de éxito: exito, mensaje, datos, marcaDeTiempo\", () => {",
+                  "    pm.expect(r.exito).to.eql(true);",
+                  "    pm.expect(r.mensaje).to.be.a(\"string\").and.not.empty;",
+                  "    pm.expect(r).to.have.property(\"datos\");",
+                  "    pm.expect(r.marcaDeTiempo).to.be.a(\"string\");",
+                  "});",
+                  "pm.test(\"La lista contiene al paciente recién creado\", () => {",
+                  "    pm.expect(r.datos).to.be.an(\"array\");",
+                  "    pm.expect(r.datos.map(p => p.id)).to.include(Number(pm.collectionVariables.get(\"pacienteId\")));",
+                  "});",
+                  "pm.test(\"Responde en menos de 2000 ms\", () => pm.expect(pm.response.responseTime).to.be.below(2000));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/pacientes",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "pacientes"
+              ]
+            },
+            "description": "Lista todos los pacientes registrados."
+          },
+          "response": []
+        },
+        {
+          "name": "Obtener paciente por Id (200)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Código HTTP 200\", () => pm.response.to.have.status(200));",
+                  "pm.test(\"Contenido en formato JSON\", () => pm.expect(pm.response.headers.get(\"Content-Type\")).to.include(\"application/json\"));",
+                  "const r = pm.response.json();",
+                  "pm.test(\"Estructura estándar de éxito: exito, mensaje, datos, marcaDeTiempo\", () => {",
+                  "    pm.expect(r.exito).to.eql(true);",
+                  "    pm.expect(r.mensaje).to.be.a(\"string\").and.not.empty;",
+                  "    pm.expect(r).to.have.property(\"datos\");",
+                  "    pm.expect(r.marcaDeTiempo).to.be.a(\"string\");",
+                  "});",
+                  "pm.test(\"Devuelve el paciente solicitado\", () => pm.expect(r.datos.id).to.eql(Number(pm.collectionVariables.get(\"pacienteId\"))));",
+                  "pm.test(\"Responde en menos de 2000 ms\", () => pm.expect(pm.response.responseTime).to.be.below(2000));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/pacientes/{{pacienteId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "pacientes",
+                "{{pacienteId}}"
+              ]
+            },
+            "description": "Busca un paciente por su identificador."
+          },
+          "response": []
+        },
+        {
+          "name": "Actualizar paciente (200)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Código HTTP 200\", () => pm.response.to.have.status(200));",
+                  "pm.test(\"Contenido en formato JSON\", () => pm.expect(pm.response.headers.get(\"Content-Type\")).to.include(\"application/json\"));",
+                  "const r = pm.response.json();",
+                  "pm.test(\"Estructura estándar de éxito: exito, mensaje, datos, marcaDeTiempo\", () => {",
+                  "    pm.expect(r.exito).to.eql(true);",
+                  "    pm.expect(r.mensaje).to.be.a(\"string\").and.not.empty;",
+                  "    pm.expect(r).to.have.property(\"datos\");",
+                  "    pm.expect(r.marcaDeTiempo).to.be.a(\"string\");",
+                  "});",
+                  "pm.test(\"Los datos quedaron actualizados y se registró la fecha de actualización\", () => {",
+                  "    pm.expect(r.datos.telefono).to.eql(\"999111222\");",
+                  "    pm.expect(r.datos.direccion).to.eql(\"Jr. Cusco 320, Miraflores\");",
+                  "    pm.expect(r.datos.fechaActualizacion).to.be.a(\"string\");",
+                  "});",
+                  "pm.test(\"Responde en menos de 2000 ms\", () => pm.expect(pm.response.responseTime).to.be.below(2000));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/pacientes/{{pacienteId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "pacientes",
+                "{{pacienteId}}"
+              ]
+            },
+            "description": "Reemplaza los datos del paciente (se envían todos los campos). Cambia el teléfono y la dirección.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"nombres\": \"María Elena\",\n  \"apellidos\": \"Quispe Huamán\",\n  \"dni\": \"{{dniPaciente}}\",\n  \"telefono\": \"999111222\",\n  \"email\": \"maria.quispe@correo.com\",\n  \"fechaNacimiento\": \"1992-08-15\",\n  \"direccion\": \"Jr. Cusco 320, Miraflores\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Registrar paciente con datos inválidos (400)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Código HTTP 400\", () => pm.response.to.have.status(400));",
+                  "pm.test(\"Contenido en formato JSON\", () => pm.expect(pm.response.headers.get(\"Content-Type\")).to.include(\"application/json\"));",
+                  "const r = pm.response.json();",
+                  "pm.test(\"Estructura estándar de error: exito=false, codigoEstado, titulo, mensaje, ruta, idTraza\", () => {",
+                  "    pm.expect(r.exito).to.eql(false);",
+                  "    pm.expect(r.codigoEstado).to.eql(400);",
+                  "    pm.expect(r.titulo).to.be.a(\"string\").and.not.empty;",
+                  "    pm.expect(r.mensaje).to.be.a(\"string\").and.not.empty;",
+                  "    pm.expect(r.ruta).to.be.a(\"string\");",
+                  "    pm.expect(r.idTraza).to.be.a(\"string\");",
+                  "});",
+                  "pm.test(\"Detalla el error de cada campo inválido\", () => {",
+                  "    pm.expect(r.titulo).to.eql(\"Error de validación\");",
+                  "    [\"nombres\", \"apellidos\", \"dni\", \"telefono\", \"email\", \"fechaNacimiento\"].forEach(c =>",
+                  "        pm.expect(r.errores, \"campo \" + c).to.have.property(c));",
+                  "});",
+                  "pm.test(\"Responde en menos de 2000 ms\", () => pm.expect(pm.response.responseTime).to.be.below(2000));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/pacientes",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "pacientes"
+              ]
+            },
+            "description": "Envía datos que incumplen varias validaciones. La respuesta detalla el error de **cada campo** en `errores`.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"nombres\": \"A1\",\n  \"apellidos\": \"\",\n  \"dni\": \"123\",\n  \"telefono\": \"123456789\",\n  \"email\": \"correo-malo\",\n  \"fechaNacimiento\": \"2999-01-01\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Registrar paciente con DNI duplicado (409)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Código HTTP 409\", () => pm.response.to.have.status(409));",
+                  "pm.test(\"Contenido en formato JSON\", () => pm.expect(pm.response.headers.get(\"Content-Type\")).to.include(\"application/json\"));",
+                  "const r = pm.response.json();",
+                  "pm.test(\"Estructura estándar de error: exito=false, codigoEstado, titulo, mensaje, ruta, idTraza\", () => {",
+                  "    pm.expect(r.exito).to.eql(false);",
+                  "    pm.expect(r.codigoEstado).to.eql(409);",
+                  "    pm.expect(r.titulo).to.be.a(\"string\").and.not.empty;",
+                  "    pm.expect(r.mensaje).to.be.a(\"string\").and.not.empty;",
+                  "    pm.expect(r.ruta).to.be.a(\"string\");",
+                  "    pm.expect(r.idTraza).to.be.a(\"string\");",
+                  "});",
+                  "pm.test(\"El mensaje explica que el DNI ya existe\", () => pm.expect(r.mensaje).to.include(\"Ya existe un paciente\"));",
+                  "pm.test(\"Responde en menos de 2000 ms\", () => pm.expect(pm.response.responseTime).to.be.below(2000));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/pacientes",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "pacientes"
+              ]
+            },
+            "description": "El DNI ya pertenece a otro paciente → **409 Conflict** (simula una restricción UNIQUE).",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"nombres\": \"Rosa\",\n  \"apellidos\": \"Medina Cruz\",\n  \"dni\": \"{{dniPaciente}}\",\n  \"telefono\": \"911222333\",\n  \"email\": \"rosa@correo.com\",\n  \"fechaNacimiento\": \"1980-01-10\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Obtener paciente inexistente (404)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Código HTTP 404\", () => pm.response.to.have.status(404));",
+                  "pm.test(\"Contenido en formato JSON\", () => pm.expect(pm.response.headers.get(\"Content-Type\")).to.include(\"application/json\"));",
+                  "const r = pm.response.json();",
+                  "pm.test(\"Estructura estándar de error: exito=false, codigoEstado, titulo, mensaje, ruta, idTraza\", () => {",
+                  "    pm.expect(r.exito).to.eql(false);",
+                  "    pm.expect(r.codigoEstado).to.eql(404);",
+                  "    pm.expect(r.titulo).to.be.a(\"string\").and.not.empty;",
+                  "    pm.expect(r.mensaje).to.be.a(\"string\").and.not.empty;",
+                  "    pm.expect(r.ruta).to.be.a(\"string\");",
+                  "    pm.expect(r.idTraza).to.be.a(\"string\");",
+                  "});",
+                  "pm.test(\"El mensaje indica qué recurso no se encontró\", () => pm.expect(r.mensaje).to.include(\"No se encontró el paciente\"));",
+                  "pm.test(\"Responde en menos de 2000 ms\", () => pm.expect(pm.response.responseTime).to.be.below(2000));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/pacientes/999999",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "pacientes",
+                "999999"
+              ]
+            },
+            "description": "Un Id que no existe → **404 Not Found**."
+          },
+          "response": []
+        },
+        {
+          "name": "Obtener paciente con Id inválido (400)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Código HTTP 400\", () => pm.response.to.have.status(400));",
+                  "pm.test(\"Contenido en formato JSON\", () => pm.expect(pm.response.headers.get(\"Content-Type\")).to.include(\"application/json\"));",
+                  "const r = pm.response.json();",
+                  "pm.test(\"Estructura estándar de error: exito=false, codigoEstado, titulo, mensaje, ruta, idTraza\", () => {",
+                  "    pm.expect(r.exito).to.eql(false);",
+                  "    pm.expect(r.codigoEstado).to.eql(400);",
+                  "    pm.expect(r.titulo).to.be.a(\"string\").and.not.empty;",
+                  "    pm.expect(r.mensaje).to.be.a(\"string\").and.not.empty;",
+                  "    pm.expect(r.ruta).to.be.a(\"string\");",
+                  "    pm.expect(r.idTraza).to.be.a(\"string\");",
+                  "});",
+                  "pm.test(\"Indica que el campo id no es válido\", () => pm.expect(r.errores).to.have.property(\"id\"));",
+                  "pm.test(\"Responde en menos de 2000 ms\", () => pm.expect(pm.response.responseTime).to.be.below(2000));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/pacientes/abc",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "pacientes",
+                "abc"
+              ]
+            },
+            "description": "Un Id que no es número → **400 Bad Request** con mensaje en español."
+          },
+          "response": []
+        },
+        {
+          "name": "Registrar paciente temporal (201)",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.collectionVariables.set(\"dniTemporal\", String(Math.floor(10000000 + Math.random() * 89999999)));"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Código HTTP 201\", () => pm.response.to.have.status(201));",
+                  "pm.test(\"Contenido en formato JSON\", () => pm.expect(pm.response.headers.get(\"Content-Type\")).to.include(\"application/json\"));",
+                  "const r = pm.response.json();",
+                  "pm.test(\"Estructura estándar de éxito: exito, mensaje, datos, marcaDeTiempo\", () => {",
+                  "    pm.expect(r.exito).to.eql(true);",
+                  "    pm.expect(r.mensaje).to.be.a(\"string\").and.not.empty;",
+                  "    pm.expect(r).to.have.property(\"datos\");",
+                  "    pm.expect(r.marcaDeTiempo).to.be.a(\"string\");",
+                  "});",
+                  "pm.collectionVariables.set(\"pacienteTempId\", r.datos.id);",
+                  "pm.test(\"Responde en menos de 2000 ms\", () => pm.expect(pm.response.responseTime).to.be.below(2000));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/pacientes",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "pacientes"
+              ]
+            },
+            "description": "Crea un paciente descartable para demostrar la eliminación.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"nombres\": \"Temporal\",\n  \"apellidos\": \"Para Eliminar\",\n  \"dni\": \"{{dniTemporal}}\",\n  \"telefono\": \"933000111\",\n  \"email\": \"temporal@correo.com\",\n  \"fechaNacimiento\": \"2000-12-31\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Eliminar paciente sin citas (204)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Código HTTP 204 (No Content)\", () => pm.response.to.have.status(204));",
+                  "pm.test(\"La respuesta no tiene cuerpo\", () => pm.expect(pm.response.text()).to.be.empty);",
+                  "pm.test(\"Responde en menos de 2000 ms\", () => pm.expect(pm.response.responseTime).to.be.below(2000));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/pacientes/{{pacienteTempId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "pacientes",
+                "{{pacienteTempId}}"
+              ]
+            },
+            "description": "Elimina el paciente. Devuelve **204 No Content** (sin cuerpo)."
+          },
+          "response": []
+        },
+        {
+          "name": "Verificar que el paciente eliminado ya no existe (404)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Código HTTP 404\", () => pm.response.to.have.status(404));",
+                  "pm.test(\"Contenido en formato JSON\", () => pm.expect(pm.response.headers.get(\"Content-Type\")).to.include(\"application/json\"));",
+                  "const r = pm.response.json();",
+                  "pm.test(\"Estructura estándar de error: exito=false, codigoEstado, titulo, mensaje, ruta, idTraza\", () => {",
+                  "    pm.expect(r.exito).to.eql(false);",
+                  "    pm.expect(r.codigoEstado).to.eql(404);",
+                  "    pm.expect(r.titulo).to.be.a(\"string\").and.not.empty;",
+                  "    pm.expect(r.mensaje).to.be.a(\"string\").and.not.empty;",
+                  "    pm.expect(r.ruta).to.be.a(\"string\");",
+                  "    pm.expect(r.idTraza).to.be.a(\"string\");",
+                  "});",
+                  "",
+                  "pm.test(\"Responde en menos de 2000 ms\", () => pm.expect(pm.response.responseTime).to.be.below(2000));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/pacientes/{{pacienteTempId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "pacientes",
+                "{{pacienteTempId}}"
+              ]
+            },
+            "description": ""
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "02 · Médicos",
+      "description": "CRUD de médicos, filtro por especialidad y restricciones de unicidad (DNI y colegiatura).",
+      "item": [
+        {
+          "name": "Registrar médico (201)",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.collectionVariables.set(\"dniMedico\", String(Math.floor(10000000 + Math.random() * 89999999)));",
+                  "pm.collectionVariables.set(\"cmpMedico\", String(Math.floor(100000 + Math.random() * 899999)));"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Código HTTP 201\", () => pm.response.to.have.status(201));",
+                  "pm.test(\"Contenido en formato JSON\", () => pm.expect(pm.response.headers.get(\"Content-Type\")).to.include(\"application/json\"));",
+                  "const r = pm.response.json();",
+                  "pm.test(\"Estructura estándar de éxito: exito, mensaje, datos, marcaDeTiempo\", () => {",
+                  "    pm.expect(r.exito).to.eql(true);",
+                  "    pm.expect(r.mensaje).to.be.a(\"string\").and.not.empty;",
+                  "    pm.expect(r).to.have.property(\"datos\");",
+                  "    pm.expect(r.marcaDeTiempo).to.be.a(\"string\");",
+                  "});",
+                  "pm.test(\"Incluye la cabecera Location apuntando al nuevo recurso\", () => {",
+                  "    pm.expect(pm.response.headers.get(\"Location\")).to.match(/\\/api\\/v1\\/medicos\\/\\d+$/);",
+                  "});",
+                  "pm.test(\"El médico quedó activo y con su especialidad\", () => {",
+                  "    pm.expect(r.datos.activo).to.eql(true);",
+                  "    pm.expect(r.datos.especialidad).to.eql(\"Dermatología\");",
+                  "    pm.expect(r.datos.numeroColegiatura).to.eql(pm.collectionVariables.get(\"cmpMedico\"));",
+                  "});",
+                  "pm.collectionVariables.set(\"medicoId\", r.datos.id);",
+                  "pm.test(\"Responde en menos de 2000 ms\", () => pm.expect(pm.response.responseTime).to.be.below(2000));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/medicos",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "medicos"
+              ]
+            },
+            "description": "Crea un médico activo. La colegiatura (CMP, 5–6 dígitos) y el DNI deben ser únicos.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"nombres\": \"Andrea\",\n  \"apellidos\": \"Paredes Lozano\",\n  \"dni\": \"{{dniMedico}}\",\n  \"telefono\": \"955443322\",\n  \"email\": \"andrea.paredes@clinica.pe\",\n  \"numeroColegiatura\": \"{{cmpMedico}}\",\n  \"especialidad\": \"Dermatología\",\n  \"activo\": true\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Listar médicos (200)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Código HTTP 200\", () => pm.response.to.have.status(200));",
+                  "pm.test(\"Contenido en formato JSON\", () => pm.expect(pm.response.headers.get(\"Content-Type\")).to.include(\"application/json\"));",
+                  "const r = pm.response.json();",
+                  "pm.test(\"Estructura estándar de éxito: exito, mensaje, datos, marcaDeTiempo\", () => {",
+                  "    pm.expect(r.exito).to.eql(true);",
+                  "    pm.expect(r.mensaje).to.be.a(\"string\").and.not.empty;",
+                  "    pm.expect(r).to.have.property(\"datos\");",
+                  "    pm.expect(r.marcaDeTiempo).to.be.a(\"string\");",
+                  "});",
+                  "pm.test(\"La lista contiene al médico recién creado\", () => pm.expect(r.datos.map(m => m.id)).to.include(Number(pm.collectionVariables.get(\"medicoId\"))));",
+                  "pm.test(\"Responde en menos de 2000 ms\", () => pm.expect(pm.response.responseTime).to.be.below(2000));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/medicos",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "medicos"
+              ]
+            },
+            "description": "Lista todos los médicos."
+          },
+          "response": []
+        },
+        {
+          "name": "Filtrar médicos por especialidad (200)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Código HTTP 200\", () => pm.response.to.have.status(200));",
+                  "pm.test(\"Contenido en formato JSON\", () => pm.expect(pm.response.headers.get(\"Content-Type\")).to.include(\"application/json\"));",
+                  "const r = pm.response.json();",
+                  "pm.test(\"Estructura estándar de éxito: exito, mensaje, datos, marcaDeTiempo\", () => {",
+                  "    pm.expect(r.exito).to.eql(true);",
+                  "    pm.expect(r.mensaje).to.be.a(\"string\").and.not.empty;",
+                  "    pm.expect(r).to.have.property(\"datos\");",
+                  "    pm.expect(r.marcaDeTiempo).to.be.a(\"string\");",
+                  "});",
+                  "pm.test(\"Solo devuelve médicos cuya especialidad contiene 'dermato'\", () => {",
+                  "    pm.expect(r.datos.length).to.be.above(0);",
+                  "    r.datos.forEach(m => pm.expect(m.especialidad.toLowerCase()).to.include(\"dermato\"));",
+                  "    pm.expect(r.datos.map(m => m.id)).to.include(Number(pm.collectionVariables.get(\"medicoId\")));",
+                  "});",
+                  "pm.test(\"Responde en menos de 2000 ms\", () => pm.expect(pm.response.responseTime).to.be.below(2000));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/medicos?especialidad=dermato",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "medicos"
+              ],
+              "query": [
+                {
+                  "key": "especialidad",
+                  "value": "dermato"
+                }
+              ]
+            },
+            "description": "Filtro opcional por query string: coincidencia parcial, sin distinguir mayúsculas."
+          },
+          "response": []
+        },
+        {
+          "name": "Obtener médico por Id (200)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Código HTTP 200\", () => pm.response.to.have.status(200));",
+                  "pm.test(\"Contenido en formato JSON\", () => pm.expect(pm.response.headers.get(\"Content-Type\")).to.include(\"application/json\"));",
+                  "const r = pm.response.json();",
+                  "pm.test(\"Estructura estándar de éxito: exito, mensaje, datos, marcaDeTiempo\", () => {",
+                  "    pm.expect(r.exito).to.eql(true);",
+                  "    pm.expect(r.mensaje).to.be.a(\"string\").and.not.empty;",
+                  "    pm.expect(r).to.have.property(\"datos\");",
+                  "    pm.expect(r.marcaDeTiempo).to.be.a(\"string\");",
+                  "});",
+                  "pm.test(\"Devuelve el médico solicitado\", () => pm.expect(r.datos.id).to.eql(Number(pm.collectionVariables.get(\"medicoId\"))));",
+                  "pm.test(\"Responde en menos de 2000 ms\", () => pm.expect(pm.response.responseTime).to.be.below(2000));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/medicos/{{medicoId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "medicos",
+                "{{medicoId}}"
+              ]
+            },
+            "description": ""
+          },
+          "response": []
+        },
+        {
+          "name": "Actualizar médico (200)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Código HTTP 200\", () => pm.response.to.have.status(200));",
+                  "pm.test(\"Contenido en formato JSON\", () => pm.expect(pm.response.headers.get(\"Content-Type\")).to.include(\"application/json\"));",
+                  "const r = pm.response.json();",
+                  "pm.test(\"Estructura estándar de éxito: exito, mensaje, datos, marcaDeTiempo\", () => {",
+                  "    pm.expect(r.exito).to.eql(true);",
+                  "    pm.expect(r.mensaje).to.be.a(\"string\").and.not.empty;",
+                  "    pm.expect(r).to.have.property(\"datos\");",
+                  "    pm.expect(r.marcaDeTiempo).to.be.a(\"string\");",
+                  "});",
+                  "pm.test(\"El teléfono quedó actualizado\", () => pm.expect(r.datos.telefono).to.eql(\"966555444\"));",
+                  "pm.test(\"Responde en menos de 2000 ms\", () => pm.expect(pm.response.responseTime).to.be.below(2000));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/medicos/{{medicoId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "medicos",
+                "{{medicoId}}"
+              ]
+            },
+            "description": "Reemplaza los datos del médico (cambia el teléfono).",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"nombres\": \"Andrea\",\n  \"apellidos\": \"Paredes Lozano\",\n  \"dni\": \"{{dniMedico}}\",\n  \"telefono\": \"966555444\",\n  \"email\": \"andrea.paredes@clinica.pe\",\n  \"numeroColegiatura\": \"{{cmpMedico}}\",\n  \"especialidad\": \"Dermatología\",\n  \"activo\": true\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Registrar médico con datos inválidos (400)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Código HTTP 400\", () => pm.response.to.have.status(400));",
+                  "pm.test(\"Contenido en formato JSON\", () => pm.expect(pm.response.headers.get(\"Content-Type\")).to.include(\"application/json\"));",
+                  "const r = pm.response.json();",
+                  "pm.test(\"Estructura estándar de error: exito=false, codigoEstado, titulo, mensaje, ruta, idTraza\", () => {",
+                  "    pm.expect(r.exito).to.eql(false);",
+                  "    pm.expect(r.codigoEstado).to.eql(400);",
+                  "    pm.expect(r.titulo).to.be.a(\"string\").and.not.empty;",
+                  "    pm.expect(r.mensaje).to.be.a(\"string\").and.not.empty;",
+                  "    pm.expect(r.ruta).to.be.a(\"string\");",
+                  "    pm.expect(r.idTraza).to.be.a(\"string\");",
+                  "});",
+                  "pm.test(\"Detalla el error de cada campo inválido\", () => {",
+                  "    [\"nombres\", \"apellidos\", \"dni\", \"telefono\", \"email\", \"numeroColegiatura\", \"especialidad\"].forEach(c =>",
+                  "        pm.expect(r.errores, \"campo \" + c).to.have.property(c));",
+                  "});",
+                  "pm.test(\"Responde en menos de 2000 ms\", () => pm.expect(pm.response.responseTime).to.be.below(2000));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/medicos",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "medicos"
+              ]
+            },
+            "description": "Varias validaciones incumplidas a la vez.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"nombres\": \"\",\n  \"apellidos\": \"X\",\n  \"dni\": \"abc\",\n  \"telefono\": \"12\",\n  \"email\": \"x\",\n  \"numeroColegiatura\": \"12\",\n  \"especialidad\": \"\",\n  \"activo\": true\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Registrar médico con colegiatura duplicada (409)",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.collectionVariables.set(\"dniAuxiliar\", String(Math.floor(10000000 + Math.random() * 89999999)));"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Código HTTP 409\", () => pm.response.to.have.status(409));",
+                  "pm.test(\"Contenido en formato JSON\", () => pm.expect(pm.response.headers.get(\"Content-Type\")).to.include(\"application/json\"));",
+                  "const r = pm.response.json();",
+                  "pm.test(\"Estructura estándar de error: exito=false, codigoEstado, titulo, mensaje, ruta, idTraza\", () => {",
+                  "    pm.expect(r.exito).to.eql(false);",
+                  "    pm.expect(r.codigoEstado).to.eql(409);",
+                  "    pm.expect(r.titulo).to.be.a(\"string\").and.not.empty;",
+                  "    pm.expect(r.mensaje).to.be.a(\"string\").and.not.empty;",
+                  "    pm.expect(r.ruta).to.be.a(\"string\");",
+                  "    pm.expect(r.idTraza).to.be.a(\"string\");",
+                  "});",
+                  "pm.test(\"El mensaje menciona la colegiatura\", () => pm.expect(r.mensaje).to.include(\"colegiatura\"));",
+                  "pm.test(\"Responde en menos de 2000 ms\", () => pm.expect(pm.response.responseTime).to.be.below(2000));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/medicos",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "medicos"
+              ]
+            },
+            "description": "Mismo número de colegiatura que otro médico → **409 Conflict**.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"nombres\": \"Raúl\",\n  \"apellidos\": \"Gómez Pino\",\n  \"dni\": \"{{dniAuxiliar}}\",\n  \"telefono\": \"977665544\",\n  \"email\": \"raul@clinica.pe\",\n  \"numeroColegiatura\": \"{{cmpMedico}}\",\n  \"especialidad\": \"Traumatología\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Obtener médico inexistente (404)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Código HTTP 404\", () => pm.response.to.have.status(404));",
+                  "pm.test(\"Contenido en formato JSON\", () => pm.expect(pm.response.headers.get(\"Content-Type\")).to.include(\"application/json\"));",
+                  "const r = pm.response.json();",
+                  "pm.test(\"Estructura estándar de error: exito=false, codigoEstado, titulo, mensaje, ruta, idTraza\", () => {",
+                  "    pm.expect(r.exito).to.eql(false);",
+                  "    pm.expect(r.codigoEstado).to.eql(404);",
+                  "    pm.expect(r.titulo).to.be.a(\"string\").and.not.empty;",
+                  "    pm.expect(r.mensaje).to.be.a(\"string\").and.not.empty;",
+                  "    pm.expect(r.ruta).to.be.a(\"string\");",
+                  "    pm.expect(r.idTraza).to.be.a(\"string\");",
+                  "});",
+                  "pm.test(\"El mensaje indica qué recurso no se encontró\", () => pm.expect(r.mensaje).to.include(\"No se encontró el médico\"));",
+                  "pm.test(\"Responde en menos de 2000 ms\", () => pm.expect(pm.response.responseTime).to.be.below(2000));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/medicos/999999",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "medicos",
+                "999999"
+              ]
+            },
+            "description": ""
+          },
+          "response": []
+        },
+        {
+          "name": "Registrar médico temporal (201)",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.collectionVariables.set(\"dniTemporal\", String(Math.floor(10000000 + Math.random() * 89999999)));",
+                  "pm.collectionVariables.set(\"cmpTemporal\", String(Math.floor(100000 + Math.random() * 899999)));"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Código HTTP 201\", () => pm.response.to.have.status(201));",
+                  "pm.test(\"Contenido en formato JSON\", () => pm.expect(pm.response.headers.get(\"Content-Type\")).to.include(\"application/json\"));",
+                  "const r = pm.response.json();",
+                  "pm.test(\"Estructura estándar de éxito: exito, mensaje, datos, marcaDeTiempo\", () => {",
+                  "    pm.expect(r.exito).to.eql(true);",
+                  "    pm.expect(r.mensaje).to.be.a(\"string\").and.not.empty;",
+                  "    pm.expect(r).to.have.property(\"datos\");",
+                  "    pm.expect(r.marcaDeTiempo).to.be.a(\"string\");",
+                  "});",
+                  "pm.collectionVariables.set(\"medicoTempId\", r.datos.id);",
+                  "pm.test(\"Responde en menos de 2000 ms\", () => pm.expect(pm.response.responseTime).to.be.below(2000));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/medicos",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "medicos"
+              ]
+            },
+            "description": "Médico descartable para demostrar la eliminación.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"nombres\": \"Temporal\",\n  \"apellidos\": \"Para Eliminar\",\n  \"dni\": \"{{dniTemporal}}\",\n  \"telefono\": \"944111222\",\n  \"email\": \"medico.temporal@clinica.pe\",\n  \"numeroColegiatura\": \"{{cmpTemporal}}\",\n  \"especialidad\": \"Medicina General\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Eliminar médico sin citas (204)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Código HTTP 204 (No Content)\", () => pm.response.to.have.status(204));",
+                  "pm.test(\"La respuesta no tiene cuerpo\", () => pm.expect(pm.response.text()).to.be.empty);",
+                  "pm.test(\"Responde en menos de 2000 ms\", () => pm.expect(pm.response.responseTime).to.be.below(2000));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/medicos/{{medicoTempId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "medicos",
+                "{{medicoTempId}}"
+              ]
+            },
+            "description": ""
+          },
+          "response": []
+        },
+        {
+          "name": "Verificar que el médico eliminado ya no existe (404)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Código HTTP 404\", () => pm.response.to.have.status(404));",
+                  "pm.test(\"Contenido en formato JSON\", () => pm.expect(pm.response.headers.get(\"Content-Type\")).to.include(\"application/json\"));",
+                  "const r = pm.response.json();",
+                  "pm.test(\"Estructura estándar de error: exito=false, codigoEstado, titulo, mensaje, ruta, idTraza\", () => {",
+                  "    pm.expect(r.exito).to.eql(false);",
+                  "    pm.expect(r.codigoEstado).to.eql(404);",
+                  "    pm.expect(r.titulo).to.be.a(\"string\").and.not.empty;",
+                  "    pm.expect(r.mensaje).to.be.a(\"string\").and.not.empty;",
+                  "    pm.expect(r.ruta).to.be.a(\"string\");",
+                  "    pm.expect(r.idTraza).to.be.a(\"string\");",
+                  "});",
+                  "",
+                  "pm.test(\"Responde en menos de 2000 ms\", () => pm.expect(pm.response.responseTime).to.be.below(2000));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/medicos/{{medicoTempId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "medicos",
+                "{{medicoTempId}}"
+              ]
+            },
+            "description": ""
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "03 · Citas",
+      "description": "Núcleo del sistema: registrar, consultar, reprogramar, confirmar, cancelar, atender y eliminar citas, con reglas de negocio.",
+      "item": [
+        {
+          "name": "Registrar cita (201)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Código HTTP 201\", () => pm.response.to.have.status(201));",
+                  "pm.test(\"Contenido en formato JSON\", () => pm.expect(pm.response.headers.get(\"Content-Type\")).to.include(\"application/json\"));",
+                  "const r = pm.response.json();",
+                  "pm.test(\"Estructura estándar de éxito: exito, mensaje, datos, marcaDeTiempo\", () => {",
+                  "    pm.expect(r.exito).to.eql(true);",
+                  "    pm.expect(r.mensaje).to.be.a(\"string\").and.not.empty;",
+                  "    pm.expect(r).to.have.property(\"datos\");",
+                  "    pm.expect(r.marcaDeTiempo).to.be.a(\"string\");",
+                  "});",
+                  "pm.test(\"Incluye la cabecera Location apuntando a la nueva cita\", () => {",
+                  "    pm.expect(pm.response.headers.get(\"Location\")).to.match(/\\/api\\/v1\\/citas\\/\\d+$/);",
+                  "});",
+                  "pm.test(\"La cita nace Programada, con nombres de paciente y médico (como un JOIN)\", () => {",
+                  "    pm.expect(r.datos.estado).to.eql(\"Programada\");",
+                  "    pm.expect(r.datos.paciente).to.eql(\"María Elena Quispe Huamán\");",
+                  "    pm.expect(r.datos.medico).to.eql(\"Andrea Paredes Lozano\");",
+                  "    pm.expect(r.datos.especialidad).to.eql(\"Dermatología\");",
+                  "});",
+                  "pm.test(\"La hora de fin = inicio + 30 minutos\", () => {",
+                  "    pm.expect(new Date(r.datos.fechaFin) - new Date(r.datos.fechaHora)).to.eql(30 * 60000);",
+                  "});",
+                  "pm.collectionVariables.set(\"citaId\", r.datos.id);",
+                  "pm.test(\"Responde en menos de 2000 ms\", () => pm.expect(pm.response.responseTime).to.be.below(2000));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/citas",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "citas"
+              ]
+            },
+            "description": "Crea una cita **Programada**. Valida que paciente y médico existan, que el médico esté activo, que la hora esté dentro del horario (08:00–18:00, lunes a sábado) y que no haya cruces de horario.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"pacienteId\": {{pacienteId}},\n  \"medicoId\": {{medicoId}},\n  \"fechaHora\": \"{{fechaCita}}\",\n  \"duracionMinutos\": 30,\n  \"motivo\": \"Control dermatológico anual\",\n  \"observaciones\": \"Primera consulta\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Listar citas (200)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Código HTTP 200\", () => pm.response.to.have.status(200));",
+                  "pm.test(\"Contenido en formato JSON\", () => pm.expect(pm.response.headers.get(\"Content-Type\")).to.include(\"application/json\"));",
+                  "const r = pm.response.json();",
+                  "pm.test(\"Estructura estándar de éxito: exito, mensaje, datos, marcaDeTiempo\", () => {",
+                  "    pm.expect(r.exito).to.eql(true);",
+                  "    pm.expect(r.mensaje).to.be.a(\"string\").and.not.empty;",
+                  "    pm.expect(r).to.have.property(\"datos\");",
+                  "    pm.expect(r.marcaDeTiempo).to.be.a(\"string\");",
+                  "});",
+                  "pm.test(\"La lista contiene la cita recién creada\", () => pm.expect(r.datos.map(c => c.id)).to.include(Number(pm.collectionVariables.get(\"citaId\"))));",
+                  "pm.test(\"Responde en menos de 2000 ms\", () => pm.expect(pm.response.responseTime).to.be.below(2000));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/citas",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "citas"
+              ]
+            },
+            "description": "Lista todas las citas ordenadas por fecha y hora."
+          },
+          "response": []
+        },
+        {
+          "name": "Listar citas con filtros combinados (200)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Código HTTP 200\", () => pm.response.to.have.status(200));",
+                  "pm.test(\"Contenido en formato JSON\", () => pm.expect(pm.response.headers.get(\"Content-Type\")).to.include(\"application/json\"));",
+                  "const r = pm.response.json();",
+                  "pm.test(\"Estructura estándar de éxito: exito, mensaje, datos, marcaDeTiempo\", () => {",
+                  "    pm.expect(r.exito).to.eql(true);",
+                  "    pm.expect(r.mensaje).to.be.a(\"string\").and.not.empty;",
+                  "    pm.expect(r).to.have.property(\"datos\");",
+                  "    pm.expect(r.marcaDeTiempo).to.be.a(\"string\");",
+                  "});",
+                  "pm.test(\"Todas las citas devueltas cumplen los filtros\", () => {",
+                  "    pm.expect(r.datos.length).to.be.above(0);",
+                  "    r.datos.forEach(c => {",
+                  "        pm.expect(c.estado).to.eql(\"Programada\");",
+                  "        pm.expect(c.medicoId).to.eql(Number(pm.collectionVariables.get(\"medicoId\")));",
+                  "        pm.expect(c.fechaHora.substring(0, 10)).to.eql(pm.collectionVariables.get(\"fechaDia\"));",
+                  "    });",
+                  "    pm.expect(r.datos.map(c => c.id)).to.include(Number(pm.collectionVariables.get(\"citaId\")));",
+                  "});",
+                  "pm.test(\"Responde en menos de 2000 ms\", () => pm.expect(pm.response.responseTime).to.be.below(2000));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/citas?estado=Programada&medicoId={{medicoId}}&fecha={{fechaDia}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "citas"
+              ],
+              "query": [
+                {
+                  "key": "estado",
+                  "value": "Programada"
+                },
+                {
+                  "key": "medicoId",
+                  "value": "{{medicoId}}"
+                },
+                {
+                  "key": "fecha",
+                  "value": "{{fechaDia}}"
+                }
+              ]
+            },
+            "description": "Filtros opcionales por query string: `estado`, `medicoId`, `pacienteId` y `fecha` (AAAA-MM-DD). Se pueden combinar."
+          },
+          "response": []
+        },
+        {
+          "name": "Obtener cita por Id (200)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Código HTTP 200\", () => pm.response.to.have.status(200));",
+                  "pm.test(\"Contenido en formato JSON\", () => pm.expect(pm.response.headers.get(\"Content-Type\")).to.include(\"application/json\"));",
+                  "const r = pm.response.json();",
+                  "pm.test(\"Estructura estándar de éxito: exito, mensaje, datos, marcaDeTiempo\", () => {",
+                  "    pm.expect(r.exito).to.eql(true);",
+                  "    pm.expect(r.mensaje).to.be.a(\"string\").and.not.empty;",
+                  "    pm.expect(r).to.have.property(\"datos\");",
+                  "    pm.expect(r.marcaDeTiempo).to.be.a(\"string\");",
+                  "});",
+                  "pm.test(\"Devuelve la cita solicitada\", () => pm.expect(r.datos.id).to.eql(Number(pm.collectionVariables.get(\"citaId\"))));",
+                  "pm.test(\"Responde en menos de 2000 ms\", () => pm.expect(pm.response.responseTime).to.be.below(2000));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/citas/{{citaId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "citas",
+                "{{citaId}}"
+              ]
+            },
+            "description": ""
+          },
+          "response": []
+        },
+        {
+          "name": "Reprogramar cita (200)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Código HTTP 200\", () => pm.response.to.have.status(200));",
+                  "pm.test(\"Contenido en formato JSON\", () => pm.expect(pm.response.headers.get(\"Content-Type\")).to.include(\"application/json\"));",
+                  "const r = pm.response.json();",
+                  "pm.test(\"Estructura estándar de éxito: exito, mensaje, datos, marcaDeTiempo\", () => {",
+                  "    pm.expect(r.exito).to.eql(true);",
+                  "    pm.expect(r.mensaje).to.be.a(\"string\").and.not.empty;",
+                  "    pm.expect(r).to.have.property(\"datos\");",
+                  "    pm.expect(r.marcaDeTiempo).to.be.a(\"string\");",
+                  "});",
+                  "pm.test(\"La cita quedó reprogramada a las 11:00 con 45 minutos\", () => {",
+                  "    pm.expect(r.datos.estado).to.eql(\"Programada\");",
+                  "    pm.expect(r.datos.fechaHora).to.eql(pm.collectionVariables.get(\"fechaReprogramada\"));",
+                  "    pm.expect(r.datos.duracionMinutos).to.eql(45);",
+                  "    pm.expect(r.datos.fechaActualizacion).to.be.a(\"string\");",
+                  "});",
+                  "pm.test(\"Responde en menos de 2000 ms\", () => pm.expect(pm.response.responseTime).to.be.below(2000));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/citas/{{citaId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "citas",
+                "{{citaId}}"
+              ]
+            },
+            "description": "Cambia horario, duración y observaciones. La cita queda **Programada** otra vez. No se puede cambiar el paciente.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"medicoId\": {{medicoId}},\n  \"fechaHora\": \"{{fechaReprogramada}}\",\n  \"duracionMinutos\": 45,\n  \"motivo\": \"Control dermatológico anual\",\n  \"observaciones\": \"Reprogramada a solicitud del paciente\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Confirmar cita (200)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Código HTTP 200\", () => pm.response.to.have.status(200));",
+                  "pm.test(\"Contenido en formato JSON\", () => pm.expect(pm.response.headers.get(\"Content-Type\")).to.include(\"application/json\"));",
+                  "const r = pm.response.json();",
+                  "pm.test(\"Estructura estándar de éxito: exito, mensaje, datos, marcaDeTiempo\", () => {",
+                  "    pm.expect(r.exito).to.eql(true);",
+                  "    pm.expect(r.mensaje).to.be.a(\"string\").and.not.empty;",
+                  "    pm.expect(r).to.have.property(\"datos\");",
+                  "    pm.expect(r.marcaDeTiempo).to.be.a(\"string\");",
+                  "});",
+                  "pm.test(\"El estado cambió a Confirmada\", () => pm.expect(r.datos.estado).to.eql(\"Confirmada\"));",
+                  "pm.test(\"Responde en menos de 2000 ms\", () => pm.expect(pm.response.responseTime).to.be.below(2000));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/citas/{{citaId}}/confirmar",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "citas",
+                "{{citaId}}",
+                "confirmar"
+              ]
+            },
+            "description": "Programada → Confirmada."
+          },
+          "response": []
+        },
+        {
+          "name": "Confirmar una cita ya confirmada (409)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Código HTTP 409\", () => pm.response.to.have.status(409));",
+                  "pm.test(\"Contenido en formato JSON\", () => pm.expect(pm.response.headers.get(\"Content-Type\")).to.include(\"application/json\"));",
+                  "const r = pm.response.json();",
+                  "pm.test(\"Estructura estándar de error: exito=false, codigoEstado, titulo, mensaje, ruta, idTraza\", () => {",
+                  "    pm.expect(r.exito).to.eql(false);",
+                  "    pm.expect(r.codigoEstado).to.eql(409);",
+                  "    pm.expect(r.titulo).to.be.a(\"string\").and.not.empty;",
+                  "    pm.expect(r.mensaje).to.be.a(\"string\").and.not.empty;",
+                  "    pm.expect(r.ruta).to.be.a(\"string\");",
+                  "    pm.expect(r.idTraza).to.be.a(\"string\");",
+                  "});",
+                  "pm.test(\"Explica la regla de la transición\", () => pm.expect(r.mensaje).to.include(\"Solo se puede confirmar\"));",
+                  "pm.test(\"Responde en menos de 2000 ms\", () => pm.expect(pm.response.responseTime).to.be.below(2000));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/citas/{{citaId}}/confirmar",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "citas",
+                "{{citaId}}",
+                "confirmar"
+              ]
+            },
+            "description": "Transición de estado no permitida → **409 Conflict**."
+          },
+          "response": []
+        },
+        {
+          "name": "Registrar cita en horario ocupado (409)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Código HTTP 409\", () => pm.response.to.have.status(409));",
+                  "pm.test(\"Contenido en formato JSON\", () => pm.expect(pm.response.headers.get(\"Content-Type\")).to.include(\"application/json\"));",
+                  "const r = pm.response.json();",
+                  "pm.test(\"Estructura estándar de error: exito=false, codigoEstado, titulo, mensaje, ruta, idTraza\", () => {",
+                  "    pm.expect(r.exito).to.eql(false);",
+                  "    pm.expect(r.codigoEstado).to.eql(409);",
+                  "    pm.expect(r.titulo).to.be.a(\"string\").and.not.empty;",
+                  "    pm.expect(r.mensaje).to.be.a(\"string\").and.not.empty;",
+                  "    pm.expect(r.ruta).to.be.a(\"string\");",
+                  "    pm.expect(r.idTraza).to.be.a(\"string\");",
+                  "});",
+                  "pm.test(\"Indica que el médico ya tiene una cita en ese horario\", () => pm.expect(r.mensaje).to.include(\"El médico ya tiene una cita\"));",
+                  "pm.test(\"Responde en menos de 2000 ms\", () => pm.expect(pm.response.responseTime).to.be.below(2000));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/citas",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "citas"
+              ]
+            },
+            "description": "El médico ya tiene una cita vigente a esa hora → **409 Conflict** (evita la doble reserva).",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"pacienteId\": {{pacienteId}},\n  \"medicoId\": {{medicoId}},\n  \"fechaHora\": \"{{fechaReprogramada}}\",\n  \"duracionMinutos\": 30,\n  \"motivo\": \"Consulta por alergia\",\n  \"observaciones\": \"Primera consulta\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Registrar cita fuera del horario de atención (422)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Código HTTP 422\", () => pm.response.to.have.status(422));",
+                  "pm.test(\"Contenido en formato JSON\", () => pm.expect(pm.response.headers.get(\"Content-Type\")).to.include(\"application/json\"));",
+                  "const r = pm.response.json();",
+                  "pm.test(\"Estructura estándar de error: exito=false, codigoEstado, titulo, mensaje, ruta, idTraza\", () => {",
+                  "    pm.expect(r.exito).to.eql(false);",
+                  "    pm.expect(r.codigoEstado).to.eql(422);",
+                  "    pm.expect(r.titulo).to.be.a(\"string\").and.not.empty;",
+                  "    pm.expect(r.mensaje).to.be.a(\"string\").and.not.empty;",
+                  "    pm.expect(r.ruta).to.be.a(\"string\");",
+                  "    pm.expect(r.idTraza).to.be.a(\"string\");",
+                  "});",
+                  "pm.test(\"Menciona el horario de atención\", () => pm.expect(r.mensaje).to.include(\"horario de atención\"));",
+                  "pm.test(\"Responde en menos de 2000 ms\", () => pm.expect(pm.response.responseTime).to.be.below(2000));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/citas",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "citas"
+              ]
+            },
+            "description": "22:00 está fuera del horario → **422 Unprocessable Entity** (datos válidos pero incumplen una regla de negocio).",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"pacienteId\": {{pacienteId}},\n  \"medicoId\": {{medicoId}},\n  \"fechaHora\": \"{{fechaFueraHorario}}\",\n  \"duracionMinutos\": 30,\n  \"motivo\": \"Consulta nocturna\",\n  \"observaciones\": \"Primera consulta\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Registrar cita en domingo (422)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Código HTTP 422\", () => pm.response.to.have.status(422));",
+                  "pm.test(\"Contenido en formato JSON\", () => pm.expect(pm.response.headers.get(\"Content-Type\")).to.include(\"application/json\"));",
+                  "const r = pm.response.json();",
+                  "pm.test(\"Estructura estándar de error: exito=false, codigoEstado, titulo, mensaje, ruta, idTraza\", () => {",
+                  "    pm.expect(r.exito).to.eql(false);",
+                  "    pm.expect(r.codigoEstado).to.eql(422);",
+                  "    pm.expect(r.titulo).to.be.a(\"string\").and.not.empty;",
+                  "    pm.expect(r.mensaje).to.be.a(\"string\").and.not.empty;",
+                  "    pm.expect(r.ruta).to.be.a(\"string\");",
+                  "    pm.expect(r.idTraza).to.be.a(\"string\");",
+                  "});",
+                  "pm.test(\"Menciona que no se atiende en domingo\", () => pm.expect(r.mensaje).to.include(\"domingos\"));",
+                  "pm.test(\"Responde en menos de 2000 ms\", () => pm.expect(pm.response.responseTime).to.be.below(2000));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/citas",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "citas"
+              ]
+            },
+            "description": "La clínica no atiende los domingos → **422**.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"pacienteId\": {{pacienteId}},\n  \"medicoId\": {{medicoId}},\n  \"fechaHora\": \"{{fechaDomingo}}\",\n  \"duracionMinutos\": 30,\n  \"motivo\": \"Consulta dominical\",\n  \"observaciones\": \"Primera consulta\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Registrar cita con fecha pasada (400)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Código HTTP 400\", () => pm.response.to.have.status(400));",
+                  "pm.test(\"Contenido en formato JSON\", () => pm.expect(pm.response.headers.get(\"Content-Type\")).to.include(\"application/json\"));",
+                  "const r = pm.response.json();",
+                  "pm.test(\"Estructura estándar de error: exito=false, codigoEstado, titulo, mensaje, ruta, idTraza\", () => {",
+                  "    pm.expect(r.exito).to.eql(false);",
+                  "    pm.expect(r.codigoEstado).to.eql(400);",
+                  "    pm.expect(r.titulo).to.be.a(\"string\").and.not.empty;",
+                  "    pm.expect(r.mensaje).to.be.a(\"string\").and.not.empty;",
+                  "    pm.expect(r.ruta).to.be.a(\"string\");",
+                  "    pm.expect(r.idTraza).to.be.a(\"string\");",
+                  "});",
+                  "pm.test(\"El error está asociado al campo fechaHora\", () => pm.expect(r.errores).to.have.property(\"fechaHora\"));",
+                  "pm.test(\"Responde en menos de 2000 ms\", () => pm.expect(pm.response.responseTime).to.be.below(2000));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/citas",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "citas"
+              ]
+            },
+            "description": "La validación personalizada `[FechaFutura]` rechaza fechas pasadas → **400**.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"pacienteId\": {{pacienteId}},\n  \"medicoId\": {{medicoId}},\n  \"fechaHora\": \"{{fechaPasada}}\",\n  \"duracionMinutos\": 30,\n  \"motivo\": \"Consulta en el pasado\",\n  \"observaciones\": \"Primera consulta\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Registrar cita con paciente inexistente (404)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Código HTTP 404\", () => pm.response.to.have.status(404));",
+                  "pm.test(\"Contenido en formato JSON\", () => pm.expect(pm.response.headers.get(\"Content-Type\")).to.include(\"application/json\"));",
+                  "const r = pm.response.json();",
+                  "pm.test(\"Estructura estándar de error: exito=false, codigoEstado, titulo, mensaje, ruta, idTraza\", () => {",
+                  "    pm.expect(r.exito).to.eql(false);",
+                  "    pm.expect(r.codigoEstado).to.eql(404);",
+                  "    pm.expect(r.titulo).to.be.a(\"string\").and.not.empty;",
+                  "    pm.expect(r.mensaje).to.be.a(\"string\").and.not.empty;",
+                  "    pm.expect(r.ruta).to.be.a(\"string\");",
+                  "    pm.expect(r.idTraza).to.be.a(\"string\");",
+                  "});",
+                  "pm.test(\"Indica que el paciente no existe\", () => pm.expect(r.mensaje).to.include(\"No se encontró el paciente\"));",
+                  "pm.test(\"Responde en menos de 2000 ms\", () => pm.expect(pm.response.responseTime).to.be.below(2000));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/citas",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "citas"
+              ]
+            },
+            "description": "Integridad referencial: el paciente debe existir.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"pacienteId\": 999999,\n  \"medicoId\": {{medicoId}},\n  \"fechaHora\": \"{{fechaCita}}\",\n  \"duracionMinutos\": 30,\n  \"motivo\": \"Paciente que no existe\",\n  \"observaciones\": \"Primera consulta\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Registrar cita con datos inválidos (400)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Código HTTP 400\", () => pm.response.to.have.status(400));",
+                  "pm.test(\"Contenido en formato JSON\", () => pm.expect(pm.response.headers.get(\"Content-Type\")).to.include(\"application/json\"));",
+                  "const r = pm.response.json();",
+                  "pm.test(\"Estructura estándar de error: exito=false, codigoEstado, titulo, mensaje, ruta, idTraza\", () => {",
+                  "    pm.expect(r.exito).to.eql(false);",
+                  "    pm.expect(r.codigoEstado).to.eql(400);",
+                  "    pm.expect(r.titulo).to.be.a(\"string\").and.not.empty;",
+                  "    pm.expect(r.mensaje).to.be.a(\"string\").and.not.empty;",
+                  "    pm.expect(r.ruta).to.be.a(\"string\");",
+                  "    pm.expect(r.idTraza).to.be.a(\"string\");",
+                  "});",
+                  "pm.test(\"Detalla el error de cada campo\", () => {",
+                  "    [\"pacienteId\", \"medicoId\", \"duracionMinutos\", \"motivo\"].forEach(c =>",
+                  "        pm.expect(r.errores, \"campo \" + c).to.have.property(c));",
+                  "});",
+                  "pm.test(\"Responde en menos de 2000 ms\", () => pm.expect(pm.response.responseTime).to.be.below(2000));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/citas",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "citas"
+              ]
+            },
+            "description": "Ids en 0, duración fuera de rango y motivo vacío.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"pacienteId\": 0,\n  \"medicoId\": 0,\n  \"fechaHora\": \"{{fechaCita}}\",\n  \"duracionMinutos\": 500,\n  \"motivo\": \"\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Ruta jerárquica: citas de un paciente (200)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Código HTTP 200\", () => pm.response.to.have.status(200));",
+                  "pm.test(\"Contenido en formato JSON\", () => pm.expect(pm.response.headers.get(\"Content-Type\")).to.include(\"application/json\"));",
+                  "const r = pm.response.json();",
+                  "pm.test(\"Estructura estándar de éxito: exito, mensaje, datos, marcaDeTiempo\", () => {",
+                  "    pm.expect(r.exito).to.eql(true);",
+                  "    pm.expect(r.mensaje).to.be.a(\"string\").and.not.empty;",
+                  "    pm.expect(r).to.have.property(\"datos\");",
+                  "    pm.expect(r.marcaDeTiempo).to.be.a(\"string\");",
+                  "});",
+                  "pm.test(\"Devuelve solo citas Confirmadas del paciente, incluida la nuestra\", () => {",
+                  "    r.datos.forEach(c => { pm.expect(c.estado).to.eql(\"Confirmada\"); pm.expect(c.pacienteId).to.eql(Number(pm.collectionVariables.get(\"pacienteId\"))); });",
+                  "    pm.expect(r.datos.map(c => c.id)).to.include(Number(pm.collectionVariables.get(\"citaId\")));",
+                  "});",
+                  "pm.test(\"Responde en menos de 2000 ms\", () => pm.expect(pm.response.responseTime).to.be.below(2000));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/pacientes/{{pacienteId}}/citas?estado=Confirmada",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "pacientes",
+                "{{pacienteId}}",
+                "citas"
+              ],
+              "query": [
+                {
+                  "key": "estado",
+                  "value": "Confirmada"
+                }
+              ]
+            },
+            "description": "El paciente \"contiene\" sus citas. Admite el filtro opcional `estado`."
+          },
+          "response": []
+        },
+        {
+          "name": "Ruta jerárquica: agenda de un médico por día (200)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Código HTTP 200\", () => pm.response.to.have.status(200));",
+                  "pm.test(\"Contenido en formato JSON\", () => pm.expect(pm.response.headers.get(\"Content-Type\")).to.include(\"application/json\"));",
+                  "const r = pm.response.json();",
+                  "pm.test(\"Estructura estándar de éxito: exito, mensaje, datos, marcaDeTiempo\", () => {",
+                  "    pm.expect(r.exito).to.eql(true);",
+                  "    pm.expect(r.mensaje).to.be.a(\"string\").and.not.empty;",
+                  "    pm.expect(r).to.have.property(\"datos\");",
+                  "    pm.expect(r.marcaDeTiempo).to.be.a(\"string\");",
+                  "});",
+                  "pm.test(\"La agenda incluye nuestra cita y solo de ese médico\", () => {",
+                  "    r.datos.forEach(c => pm.expect(c.medicoId).to.eql(Number(pm.collectionVariables.get(\"medicoId\"))));",
+                  "    pm.expect(r.datos.map(c => c.id)).to.include(Number(pm.collectionVariables.get(\"citaId\")));",
+                  "});",
+                  "pm.test(\"Responde en menos de 2000 ms\", () => pm.expect(pm.response.responseTime).to.be.below(2000));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/medicos/{{medicoId}}/citas?fecha={{fechaDia}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "medicos",
+                "{{medicoId}}",
+                "citas"
+              ],
+              "query": [
+                {
+                  "key": "fecha",
+                  "value": "{{fechaDia}}"
+                }
+              ]
+            },
+            "description": "Agenda del médico, opcionalmente de un solo día."
+          },
+          "response": []
+        },
+        {
+          "name": "Ruta jerárquica: citas de un paciente inexistente (404)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Código HTTP 404\", () => pm.response.to.have.status(404));",
+                  "pm.test(\"Contenido en formato JSON\", () => pm.expect(pm.response.headers.get(\"Content-Type\")).to.include(\"application/json\"));",
+                  "const r = pm.response.json();",
+                  "pm.test(\"Estructura estándar de error: exito=false, codigoEstado, titulo, mensaje, ruta, idTraza\", () => {",
+                  "    pm.expect(r.exito).to.eql(false);",
+                  "    pm.expect(r.codigoEstado).to.eql(404);",
+                  "    pm.expect(r.titulo).to.be.a(\"string\").and.not.empty;",
+                  "    pm.expect(r.mensaje).to.be.a(\"string\").and.not.empty;",
+                  "    pm.expect(r.ruta).to.be.a(\"string\");",
+                  "    pm.expect(r.idTraza).to.be.a(\"string\");",
+                  "});",
+                  "",
+                  "pm.test(\"Responde en menos de 2000 ms\", () => pm.expect(pm.response.responseTime).to.be.below(2000));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/pacientes/999999/citas",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "pacientes",
+                "999999",
+                "citas"
+              ]
+            },
+            "description": ""
+          },
+          "response": []
+        },
+        {
+          "name": "Eliminar paciente con citas registradas (409)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Código HTTP 409\", () => pm.response.to.have.status(409));",
+                  "pm.test(\"Contenido en formato JSON\", () => pm.expect(pm.response.headers.get(\"Content-Type\")).to.include(\"application/json\"));",
+                  "const r = pm.response.json();",
+                  "pm.test(\"Estructura estándar de error: exito=false, codigoEstado, titulo, mensaje, ruta, idTraza\", () => {",
+                  "    pm.expect(r.exito).to.eql(false);",
+                  "    pm.expect(r.codigoEstado).to.eql(409);",
+                  "    pm.expect(r.titulo).to.be.a(\"string\").and.not.empty;",
+                  "    pm.expect(r.mensaje).to.be.a(\"string\").and.not.empty;",
+                  "    pm.expect(r.ruta).to.be.a(\"string\");",
+                  "    pm.expect(r.idTraza).to.be.a(\"string\");",
+                  "});",
+                  "pm.test(\"Explica que tiene citas registradas\", () => pm.expect(r.mensaje).to.include(\"cita(s) registrada(s)\"));",
+                  "pm.test(\"Responde en menos de 2000 ms\", () => pm.expect(pm.response.responseTime).to.be.below(2000));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/pacientes/{{pacienteId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "pacientes",
+                "{{pacienteId}}"
+              ]
+            },
+            "description": "Integridad referencial (como una clave foránea): no se puede borrar un paciente con citas."
+          },
+          "response": []
+        },
+        {
+          "name": "Eliminar médico con citas registradas (409)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Código HTTP 409\", () => pm.response.to.have.status(409));",
+                  "pm.test(\"Contenido en formato JSON\", () => pm.expect(pm.response.headers.get(\"Content-Type\")).to.include(\"application/json\"));",
+                  "const r = pm.response.json();",
+                  "pm.test(\"Estructura estándar de error: exito=false, codigoEstado, titulo, mensaje, ruta, idTraza\", () => {",
+                  "    pm.expect(r.exito).to.eql(false);",
+                  "    pm.expect(r.codigoEstado).to.eql(409);",
+                  "    pm.expect(r.titulo).to.be.a(\"string\").and.not.empty;",
+                  "    pm.expect(r.mensaje).to.be.a(\"string\").and.not.empty;",
+                  "    pm.expect(r.ruta).to.be.a(\"string\");",
+                  "    pm.expect(r.idTraza).to.be.a(\"string\");",
+                  "});",
+                  "pm.test(\"Explica que tiene citas registradas\", () => pm.expect(r.mensaje).to.include(\"cita(s) registrada(s)\"));",
+                  "pm.test(\"Responde en menos de 2000 ms\", () => pm.expect(pm.response.responseTime).to.be.below(2000));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/medicos/{{medicoId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "medicos",
+                "{{medicoId}}"
+              ]
+            },
+            "description": ""
+          },
+          "response": []
+        },
+        {
+          "name": "Cancelar cita sin indicar el motivo (400)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Código HTTP 400\", () => pm.response.to.have.status(400));",
+                  "pm.test(\"Contenido en formato JSON\", () => pm.expect(pm.response.headers.get(\"Content-Type\")).to.include(\"application/json\"));",
+                  "const r = pm.response.json();",
+                  "pm.test(\"Estructura estándar de error: exito=false, codigoEstado, titulo, mensaje, ruta, idTraza\", () => {",
+                  "    pm.expect(r.exito).to.eql(false);",
+                  "    pm.expect(r.codigoEstado).to.eql(400);",
+                  "    pm.expect(r.titulo).to.be.a(\"string\").and.not.empty;",
+                  "    pm.expect(r.mensaje).to.be.a(\"string\").and.not.empty;",
+                  "    pm.expect(r.ruta).to.be.a(\"string\");",
+                  "    pm.expect(r.idTraza).to.be.a(\"string\");",
+                  "});",
+                  "pm.test(\"El error está asociado al campo motivo\", () => pm.expect(r.errores).to.have.property(\"motivo\"));",
+                  "pm.test(\"Responde en menos de 2000 ms\", () => pm.expect(pm.response.responseTime).to.be.below(2000));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/citas/{{citaId}}/cancelar",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "citas",
+                "{{citaId}}",
+                "cancelar"
+              ]
+            },
+            "description": "El motivo de cancelación es obligatorio.",
+            "body": {
+              "mode": "raw",
+              "raw": "{}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Cancelar cita (200)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Código HTTP 200\", () => pm.response.to.have.status(200));",
+                  "pm.test(\"Contenido en formato JSON\", () => pm.expect(pm.response.headers.get(\"Content-Type\")).to.include(\"application/json\"));",
+                  "const r = pm.response.json();",
+                  "pm.test(\"Estructura estándar de éxito: exito, mensaje, datos, marcaDeTiempo\", () => {",
+                  "    pm.expect(r.exito).to.eql(true);",
+                  "    pm.expect(r.mensaje).to.be.a(\"string\").and.not.empty;",
+                  "    pm.expect(r).to.have.property(\"datos\");",
+                  "    pm.expect(r.marcaDeTiempo).to.be.a(\"string\");",
+                  "});",
+                  "pm.test(\"La cita quedó Cancelada con su motivo\", () => {",
+                  "    pm.expect(r.datos.estado).to.eql(\"Cancelada\");",
+                  "    pm.expect(r.datos.motivoCancelacion).to.eql(\"El paciente no puede asistir\");",
+                  "});",
+                  "pm.test(\"Responde en menos de 2000 ms\", () => pm.expect(pm.response.responseTime).to.be.below(2000));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/citas/{{citaId}}/cancelar",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "citas",
+                "{{citaId}}",
+                "cancelar"
+              ]
+            },
+            "description": "Programada/Confirmada → **Cancelada**. El registro se conserva junto con el motivo.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"motivo\": \"El paciente no puede asistir\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Confirmar una cita cancelada (409)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Código HTTP 409\", () => pm.response.to.have.status(409));",
+                  "pm.test(\"Contenido en formato JSON\", () => pm.expect(pm.response.headers.get(\"Content-Type\")).to.include(\"application/json\"));",
+                  "const r = pm.response.json();",
+                  "pm.test(\"Estructura estándar de error: exito=false, codigoEstado, titulo, mensaje, ruta, idTraza\", () => {",
+                  "    pm.expect(r.exito).to.eql(false);",
+                  "    pm.expect(r.codigoEstado).to.eql(409);",
+                  "    pm.expect(r.titulo).to.be.a(\"string\").and.not.empty;",
+                  "    pm.expect(r.mensaje).to.be.a(\"string\").and.not.empty;",
+                  "    pm.expect(r.ruta).to.be.a(\"string\");",
+                  "    pm.expect(r.idTraza).to.be.a(\"string\");",
+                  "});",
+                  "",
+                  "pm.test(\"Responde en menos de 2000 ms\", () => pm.expect(pm.response.responseTime).to.be.below(2000));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/citas/{{citaId}}/confirmar",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "citas",
+                "{{citaId}}",
+                "confirmar"
+              ]
+            },
+            "description": "Cancelada es un estado final."
+          },
+          "response": []
+        },
+        {
+          "name": "Reprogramar una cita cancelada (409)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Código HTTP 409\", () => pm.response.to.have.status(409));",
+                  "pm.test(\"Contenido en formato JSON\", () => pm.expect(pm.response.headers.get(\"Content-Type\")).to.include(\"application/json\"));",
+                  "const r = pm.response.json();",
+                  "pm.test(\"Estructura estándar de error: exito=false, codigoEstado, titulo, mensaje, ruta, idTraza\", () => {",
+                  "    pm.expect(r.exito).to.eql(false);",
+                  "    pm.expect(r.codigoEstado).to.eql(409);",
+                  "    pm.expect(r.titulo).to.be.a(\"string\").and.not.empty;",
+                  "    pm.expect(r.mensaje).to.be.a(\"string\").and.not.empty;",
+                  "    pm.expect(r.ruta).to.be.a(\"string\");",
+                  "    pm.expect(r.idTraza).to.be.a(\"string\");",
+                  "});",
+                  "pm.test(\"Explica que no se puede modificar\", () => pm.expect(r.mensaje).to.include(\"No se puede modificar\"));",
+                  "pm.test(\"Responde en menos de 2000 ms\", () => pm.expect(pm.response.responseTime).to.be.below(2000));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/citas/{{citaId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "citas",
+                "{{citaId}}"
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"medicoId\": {{medicoId}},\n  \"fechaHora\": \"{{fechaCita}}\",\n  \"motivo\": \"Intento de cambio\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Eliminar cita (204)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Código HTTP 204 (No Content)\", () => pm.response.to.have.status(204));",
+                  "pm.test(\"La respuesta no tiene cuerpo\", () => pm.expect(pm.response.text()).to.be.empty);",
+                  "pm.test(\"Responde en menos de 2000 ms\", () => pm.expect(pm.response.responseTime).to.be.below(2000));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/citas/{{citaId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "citas",
+                "{{citaId}}"
+              ]
+            },
+            "description": "Borra definitivamente la cita (a diferencia de cancelar). **204 No Content**."
+          },
+          "response": []
+        },
+        {
+          "name": "Verificar que la cita eliminada ya no existe (404)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Código HTTP 404\", () => pm.response.to.have.status(404));",
+                  "pm.test(\"Contenido en formato JSON\", () => pm.expect(pm.response.headers.get(\"Content-Type\")).to.include(\"application/json\"));",
+                  "const r = pm.response.json();",
+                  "pm.test(\"Estructura estándar de error: exito=false, codigoEstado, titulo, mensaje, ruta, idTraza\", () => {",
+                  "    pm.expect(r.exito).to.eql(false);",
+                  "    pm.expect(r.codigoEstado).to.eql(404);",
+                  "    pm.expect(r.titulo).to.be.a(\"string\").and.not.empty;",
+                  "    pm.expect(r.mensaje).to.be.a(\"string\").and.not.empty;",
+                  "    pm.expect(r.ruta).to.be.a(\"string\");",
+                  "    pm.expect(r.idTraza).to.be.a(\"string\");",
+                  "});",
+                  "",
+                  "pm.test(\"Responde en menos de 2000 ms\", () => pm.expect(pm.response.responseTime).to.be.below(2000));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/citas/{{citaId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "citas",
+                "{{citaId}}"
+              ]
+            },
+            "description": ""
+          },
+          "response": []
+        },
+        {
+          "name": "Registrar segunda cita para el flujo 'Atendida' (201)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Código HTTP 201\", () => pm.response.to.have.status(201));",
+                  "pm.test(\"Contenido en formato JSON\", () => pm.expect(pm.response.headers.get(\"Content-Type\")).to.include(\"application/json\"));",
+                  "const r = pm.response.json();",
+                  "pm.test(\"Estructura estándar de éxito: exito, mensaje, datos, marcaDeTiempo\", () => {",
+                  "    pm.expect(r.exito).to.eql(true);",
+                  "    pm.expect(r.mensaje).to.be.a(\"string\").and.not.empty;",
+                  "    pm.expect(r).to.have.property(\"datos\");",
+                  "    pm.expect(r.marcaDeTiempo).to.be.a(\"string\");",
+                  "});",
+                  "pm.collectionVariables.set(\"citaId2\", r.datos.id);",
+                  "pm.test(\"Responde en menos de 2000 ms\", () => pm.expect(pm.response.responseTime).to.be.below(2000));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/citas",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "citas"
+              ]
+            },
+            "description": "El horario de la cita anterior quedó libre, así que se puede reutilizar.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"pacienteId\": {{pacienteId}},\n  \"medicoId\": {{medicoId}},\n  \"fechaHora\": \"{{fechaCita}}\",\n  \"duracionMinutos\": 30,\n  \"motivo\": \"Control de seguimiento\",\n  \"observaciones\": \"Primera consulta\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Marcar cita como atendida (200)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Código HTTP 200\", () => pm.response.to.have.status(200));",
+                  "pm.test(\"Contenido en formato JSON\", () => pm.expect(pm.response.headers.get(\"Content-Type\")).to.include(\"application/json\"));",
+                  "const r = pm.response.json();",
+                  "pm.test(\"Estructura estándar de éxito: exito, mensaje, datos, marcaDeTiempo\", () => {",
+                  "    pm.expect(r.exito).to.eql(true);",
+                  "    pm.expect(r.mensaje).to.be.a(\"string\").and.not.empty;",
+                  "    pm.expect(r).to.have.property(\"datos\");",
+                  "    pm.expect(r.marcaDeTiempo).to.be.a(\"string\");",
+                  "});",
+                  "pm.test(\"El estado cambió a Atendida\", () => pm.expect(r.datos.estado).to.eql(\"Atendida\"));",
+                  "pm.test(\"Responde en menos de 2000 ms\", () => pm.expect(pm.response.responseTime).to.be.below(2000));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/citas/{{citaId2}}/atender",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "citas",
+                "{{citaId2}}",
+                "atender"
+              ]
+            },
+            "description": "Programada/Confirmada → **Atendida** (estado final)."
+          },
+          "response": []
+        },
+        {
+          "name": "Eliminar una cita atendida (409)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Código HTTP 409\", () => pm.response.to.have.status(409));",
+                  "pm.test(\"Contenido en formato JSON\", () => pm.expect(pm.response.headers.get(\"Content-Type\")).to.include(\"application/json\"));",
+                  "const r = pm.response.json();",
+                  "pm.test(\"Estructura estándar de error: exito=false, codigoEstado, titulo, mensaje, ruta, idTraza\", () => {",
+                  "    pm.expect(r.exito).to.eql(false);",
+                  "    pm.expect(r.codigoEstado).to.eql(409);",
+                  "    pm.expect(r.titulo).to.be.a(\"string\").and.not.empty;",
+                  "    pm.expect(r.mensaje).to.be.a(\"string\").and.not.empty;",
+                  "    pm.expect(r.ruta).to.be.a(\"string\");",
+                  "    pm.expect(r.idTraza).to.be.a(\"string\");",
+                  "});",
+                  "pm.test(\"Menciona el historial clínico\", () => pm.expect(r.mensaje).to.include(\"historial clínico\"));",
+                  "pm.test(\"Responde en menos de 2000 ms\", () => pm.expect(pm.response.responseTime).to.be.below(2000));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/citas/{{citaId2}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "citas",
+                "{{citaId2}}"
+              ]
+            },
+            "description": "Las citas atendidas forman parte del historial clínico: no se pueden borrar."
+          },
+          "response": []
+        },
+        {
+          "name": "Cancelar una cita atendida (409)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Código HTTP 409\", () => pm.response.to.have.status(409));",
+                  "pm.test(\"Contenido en formato JSON\", () => pm.expect(pm.response.headers.get(\"Content-Type\")).to.include(\"application/json\"));",
+                  "const r = pm.response.json();",
+                  "pm.test(\"Estructura estándar de error: exito=false, codigoEstado, titulo, mensaje, ruta, idTraza\", () => {",
+                  "    pm.expect(r.exito).to.eql(false);",
+                  "    pm.expect(r.codigoEstado).to.eql(409);",
+                  "    pm.expect(r.titulo).to.be.a(\"string\").and.not.empty;",
+                  "    pm.expect(r.mensaje).to.be.a(\"string\").and.not.empty;",
+                  "    pm.expect(r.ruta).to.be.a(\"string\");",
+                  "    pm.expect(r.idTraza).to.be.a(\"string\");",
+                  "});",
+                  "",
+                  "pm.test(\"Responde en menos de 2000 ms\", () => pm.expect(pm.response.responseTime).to.be.below(2000));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/citas/{{citaId2}}/cancelar",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "citas",
+                "{{citaId2}}",
+                "cancelar"
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"motivo\": \"Ya fue atendida\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "04 · Manejo centralizado de errores",
+      "description": "Todos los errores —incluso los del framework— salen con la MISMA estructura JSON.",
+      "item": [
+        {
+          "name": "Ruta inexistente (404)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Código HTTP 404\", () => pm.response.to.have.status(404));",
+                  "pm.test(\"Contenido en formato JSON\", () => pm.expect(pm.response.headers.get(\"Content-Type\")).to.include(\"application/json\"));",
+                  "const r = pm.response.json();",
+                  "pm.test(\"Estructura estándar de error: exito=false, codigoEstado, titulo, mensaje, ruta, idTraza\", () => {",
+                  "    pm.expect(r.exito).to.eql(false);",
+                  "    pm.expect(r.codigoEstado).to.eql(404);",
+                  "    pm.expect(r.titulo).to.be.a(\"string\").and.not.empty;",
+                  "    pm.expect(r.mensaje).to.be.a(\"string\").and.not.empty;",
+                  "    pm.expect(r.ruta).to.be.a(\"string\");",
+                  "    pm.expect(r.idTraza).to.be.a(\"string\");",
+                  "});",
+                  "pm.test(\"Título de ruta no encontrada\", () => pm.expect(r.titulo).to.eql(\"Ruta no encontrada\"));",
+                  "pm.test(\"Responde en menos de 2000 ms\", () => pm.expect(pm.response.responseTime).to.be.below(2000));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/citass",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "citass"
+              ]
+            },
+            "description": ""
+          },
+          "response": []
+        },
+        {
+          "name": "Método HTTP no permitido (405)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Código HTTP 405\", () => pm.response.to.have.status(405));",
+                  "pm.test(\"Contenido en formato JSON\", () => pm.expect(pm.response.headers.get(\"Content-Type\")).to.include(\"application/json\"));",
+                  "const r = pm.response.json();",
+                  "pm.test(\"Estructura estándar de error: exito=false, codigoEstado, titulo, mensaje, ruta, idTraza\", () => {",
+                  "    pm.expect(r.exito).to.eql(false);",
+                  "    pm.expect(r.codigoEstado).to.eql(405);",
+                  "    pm.expect(r.titulo).to.be.a(\"string\").and.not.empty;",
+                  "    pm.expect(r.mensaje).to.be.a(\"string\").and.not.empty;",
+                  "    pm.expect(r.ruta).to.be.a(\"string\");",
+                  "    pm.expect(r.idTraza).to.be.a(\"string\");",
+                  "});",
+                  "pm.test(\"Título de método no permitido\", () => pm.expect(r.titulo).to.eql(\"Método no permitido\"));",
+                  "pm.test(\"Responde en menos de 2000 ms\", () => pm.expect(pm.response.responseTime).to.be.below(2000));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/citas",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "citas"
+              ]
+            },
+            "description": "La ruta existe pero no admite DELETE."
+          },
+          "response": []
+        },
+        {
+          "name": "JSON mal formado (400)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Código HTTP 400\", () => pm.response.to.have.status(400));",
+                  "pm.test(\"Contenido en formato JSON\", () => pm.expect(pm.response.headers.get(\"Content-Type\")).to.include(\"application/json\"));",
+                  "const r = pm.response.json();",
+                  "pm.test(\"Estructura estándar de error: exito=false, codigoEstado, titulo, mensaje, ruta, idTraza\", () => {",
+                  "    pm.expect(r.exito).to.eql(false);",
+                  "    pm.expect(r.codigoEstado).to.eql(400);",
+                  "    pm.expect(r.titulo).to.be.a(\"string\").and.not.empty;",
+                  "    pm.expect(r.mensaje).to.be.a(\"string\").and.not.empty;",
+                  "    pm.expect(r.ruta).to.be.a(\"string\");",
+                  "    pm.expect(r.idTraza).to.be.a(\"string\");",
+                  "});",
+                  "pm.test(\"Mensaje claro en el campo 'cuerpo'\", () => pm.expect(r.errores.cuerpo[0]).to.include(\"JSON válido\"));",
+                  "pm.test(\"Responde en menos de 2000 ms\", () => pm.expect(pm.response.responseTime).to.be.below(2000));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/citas",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "citas"
+              ]
+            },
+            "description": "El cuerpo no es un JSON válido; el mensaje técnico del framework se oculta.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\"pacienteId\": 1,, }",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Tipo de dato incorrecto (400)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Código HTTP 400\", () => pm.response.to.have.status(400));",
+                  "pm.test(\"Contenido en formato JSON\", () => pm.expect(pm.response.headers.get(\"Content-Type\")).to.include(\"application/json\"));",
+                  "const r = pm.response.json();",
+                  "pm.test(\"Estructura estándar de error: exito=false, codigoEstado, titulo, mensaje, ruta, idTraza\", () => {",
+                  "    pm.expect(r.exito).to.eql(false);",
+                  "    pm.expect(r.codigoEstado).to.eql(400);",
+                  "    pm.expect(r.titulo).to.be.a(\"string\").and.not.empty;",
+                  "    pm.expect(r.mensaje).to.be.a(\"string\").and.not.empty;",
+                  "    pm.expect(r.ruta).to.be.a(\"string\");",
+                  "    pm.expect(r.idTraza).to.be.a(\"string\");",
+                  "});",
+                  "pm.test(\"Indica el campo con formato incorrecto\", () => pm.expect(r.errores).to.have.property(\"pacienteId\"));",
+                  "pm.test(\"Responde en menos de 2000 ms\", () => pm.expect(pm.response.responseTime).to.be.below(2000));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/citas",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "citas"
+              ]
+            },
+            "description": "`pacienteId` debe ser numérico.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\"pacienteId\": \"uno\", \"medicoId\": 1, \"fechaHora\": \"mañana\", \"motivo\": \"Control\"}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Solicitud sin cuerpo (400)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Código HTTP 400\", () => pm.response.to.have.status(400));",
+                  "pm.test(\"Contenido en formato JSON\", () => pm.expect(pm.response.headers.get(\"Content-Type\")).to.include(\"application/json\"));",
+                  "const r = pm.response.json();",
+                  "pm.test(\"Estructura estándar de error: exito=false, codigoEstado, titulo, mensaje, ruta, idTraza\", () => {",
+                  "    pm.expect(r.exito).to.eql(false);",
+                  "    pm.expect(r.codigoEstado).to.eql(400);",
+                  "    pm.expect(r.titulo).to.be.a(\"string\").and.not.empty;",
+                  "    pm.expect(r.mensaje).to.be.a(\"string\").and.not.empty;",
+                  "    pm.expect(r.ruta).to.be.a(\"string\");",
+                  "    pm.expect(r.idTraza).to.be.a(\"string\");",
+                  "});",
+                  "",
+                  "pm.test(\"Responde en menos de 2000 ms\", () => pm.expect(pm.response.responseTime).to.be.below(2000));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/citas",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "citas"
+              ]
+            },
+            "description": "Se envía un POST sin cuerpo.",
+            "body": {
+              "mode": "raw",
+              "raw": "",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Tipo de contenido no soportado (415)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Código HTTP 415\", () => pm.response.to.have.status(415));",
+                  "pm.test(\"Contenido en formato JSON\", () => pm.expect(pm.response.headers.get(\"Content-Type\")).to.include(\"application/json\"));",
+                  "const r = pm.response.json();",
+                  "pm.test(\"Estructura estándar de error: exito=false, codigoEstado, titulo, mensaje, ruta, idTraza\", () => {",
+                  "    pm.expect(r.exito).to.eql(false);",
+                  "    pm.expect(r.codigoEstado).to.eql(415);",
+                  "    pm.expect(r.titulo).to.be.a(\"string\").and.not.empty;",
+                  "    pm.expect(r.mensaje).to.be.a(\"string\").and.not.empty;",
+                  "    pm.expect(r.ruta).to.be.a(\"string\");",
+                  "    pm.expect(r.idTraza).to.be.a(\"string\");",
+                  "});",
+                  "pm.test(\"Título de tipo de contenido no soportado\", () => pm.expect(r.titulo).to.eql(\"Tipo de contenido no soportado\"));",
+                  "pm.test(\"Responde en menos de 2000 ms\", () => pm.expect(pm.response.responseTime).to.be.below(2000));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "text/plain"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/citas",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "citas"
+              ]
+            },
+            "description": "Se envía `text/plain` en lugar de JSON.",
+            "body": {
+              "mode": "raw",
+              "raw": "hola",
+              "options": {
+                "raw": {
+                  "language": "text"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Filtro con valor inválido (400)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Código HTTP 400\", () => pm.response.to.have.status(400));",
+                  "pm.test(\"Contenido en formato JSON\", () => pm.expect(pm.response.headers.get(\"Content-Type\")).to.include(\"application/json\"));",
+                  "const r = pm.response.json();",
+                  "pm.test(\"Estructura estándar de error: exito=false, codigoEstado, titulo, mensaje, ruta, idTraza\", () => {",
+                  "    pm.expect(r.exito).to.eql(false);",
+                  "    pm.expect(r.codigoEstado).to.eql(400);",
+                  "    pm.expect(r.titulo).to.be.a(\"string\").and.not.empty;",
+                  "    pm.expect(r.mensaje).to.be.a(\"string\").and.not.empty;",
+                  "    pm.expect(r.ruta).to.be.a(\"string\");",
+                  "    pm.expect(r.idTraza).to.be.a(\"string\");",
+                  "});",
+                  "pm.test(\"Indica el campo estado\", () => pm.expect(r.errores).to.have.property(\"estado\"));",
+                  "pm.test(\"Responde en menos de 2000 ms\", () => pm.expect(pm.response.responseTime).to.be.below(2000));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/citas?estado=XYZ",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "citas"
+              ],
+              "query": [
+                {
+                  "key": "estado",
+                  "value": "XYZ"
+                }
+              ]
+            },
+            "description": "`estado` solo admite Programada, Confirmada, Atendida o Cancelada."
+          },
+          "response": []
+        }
+      ]
+    }
+  ]
+}

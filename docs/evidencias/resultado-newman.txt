@@ -1,0 +1,483 @@
+Ejecución de la colección de Postman con Newman 6.2.3
+Fecha: 2026-10-18 01:20:49    API: http://localhost:5080
+Comando: newman run docs/postman/ClinicaCitas.postman_collection.json -e docs/postman/ClinicaCitas.local.postman_environment.json
+==============================================================================
+
+newman
+
+API Citas Médicas – Clínica (Pruebas funcionales)
+
+Folder 00 · Información general
+Sub-folder Estado del servicio (raíz de la API)
+  GET http://localhost:5080/ [200 OK, 324B, 21ms]
+  Pass  Código HTTP 200
+  Pass  La API informa que está en línea y dónde está su documentación
+  Pass  Responde en menos de 2000 ms
+
+Folder 01 · Pacientes
+Sub-folder Registrar paciente (201)
+  POST http://localhost:5080/api/v1/pacientes [201 Created, 628B, 4ms]
+  Pass  Código HTTP 201
+  Pass  Contenido en formato JSON
+  Pass  Estructura estándar de éxito: exito, mensaje, datos, marcaDeTiempo
+  Pass  Incluye la cabecera Location apuntando al nuevo recurso
+  Pass  El paciente quedó con Id, nombre completo y correo en minúsculas
+  Pass  Responde en menos de 2000 ms
+
+Sub-folder Listar pacientes (200)
+  GET http://localhost:5080/api/v1/pacientes [200 OK, 3.16kB, 2ms]
+  Pass  Código HTTP 200
+  Pass  Contenido en formato JSON
+  Pass  Estructura estándar de éxito: exito, mensaje, datos, marcaDeTiempo
+  Pass  La lista contiene al paciente recién creado
+  Pass  Responde en menos de 2000 ms
+
+Sub-folder Obtener paciente por Id (200)
+  GET http://localhost:5080/api/v1/pacientes/14 [200 OK, 556B, 2ms]
+  Pass  Código HTTP 200
+  Pass  Contenido en formato JSON
+  Pass  Estructura estándar de éxito: exito, mensaje, datos, marcaDeTiempo
+  Pass  Devuelve el paciente solicitado
+  Pass  Responde en menos de 2000 ms
+
+Sub-folder Actualizar paciente (200)
+  PUT http://localhost:5080/api/v1/pacientes/14 [200 OK, 622B, 3ms]
+  Pass  Código HTTP 200
+  Pass  Contenido en formato JSON
+  Pass  Estructura estándar de éxito: exito, mensaje, datos, marcaDeTiempo
+  Pass  Los datos quedaron actualizados y se registró la fecha de actualización
+  Pass  Responde en menos de 2000 ms
+
+Sub-folder Registrar paciente con datos inválidos (400)
+  POST http://localhost:5080/api/v1/pacientes [400 Bad Request, 919B, 4ms]
+  Pass  Código HTTP 400
+  Pass  Contenido en formato JSON
+  Pass  Estructura estándar de error: exito=false, codigoEstado, titulo, mensaje, ruta, idTraza
+  Pass  Detalla el error de cada campo inválido
+  Pass  Responde en menos de 2000 ms
+
+Sub-folder Registrar paciente con DNI duplicado (409)
+  POST http://localhost:5080/api/v1/pacientes [409 Conflict, 487B, 2ms]
+  Pass  Código HTTP 409
+  Pass  Contenido en formato JSON
+  Pass  Estructura estándar de error: exito=false, codigoEstado, titulo, mensaje, ruta, idTraza
+  Pass  El mensaje explica que el DNI ya existe
+  Pass  Responde en menos de 2000 ms
+
+Sub-folder Obtener paciente inexistente (404)
+  GET http://localhost:5080/api/v1/pacientes/999999 [404 Not Found, 462B, 2ms]
+  Pass  Código HTTP 404
+  Pass  Contenido en formato JSON
+  Pass  Estructura estándar de error: exito=false, codigoEstado, titulo, mensaje, ruta, idTraza
+  Pass  El mensaje indica qué recurso no se encontró
+  Pass  Responde en menos de 2000 ms
+
+Sub-folder Obtener paciente con Id inválido (400)
+  GET http://localhost:5080/api/v1/pacientes/abc [400 Bad Request, 492B, 2ms]
+  Pass  Código HTTP 400
+  Pass  Contenido en formato JSON
+  Pass  Estructura estándar de error: exito=false, codigoEstado, titulo, mensaje, ruta, idTraza
+  Pass  Indica que el campo id no es válido
+  Pass  Responde en menos de 2000 ms
+
+Sub-folder Registrar paciente temporal (201)
+  POST http://localhost:5080/api/v1/pacientes [201 Created, 575B, 2ms]
+  Pass  Código HTTP 201
+  Pass  Contenido en formato JSON
+  Pass  Estructura estándar de éxito: exito, mensaje, datos, marcaDeTiempo
+  Pass  Responde en menos de 2000 ms
+
+Sub-folder Eliminar paciente sin citas (204)
+  DELETE http://localhost:5080/api/v1/pacientes/15 [204 No Content, 81B, 4ms]
+  Pass  Código HTTP 204 (No Content)
+  Pass  La respuesta no tiene cuerpo
+  Pass  Responde en menos de 2000 ms
+
+Sub-folder Verificar que el paciente eliminado ya no existe (404)
+  GET http://localhost:5080/api/v1/pacientes/15 [404 Not Found, 455B, 2ms]
+  Pass  Código HTTP 404
+  Pass  Contenido en formato JSON
+  Pass  Estructura estándar de error: exito=false, codigoEstado, titulo, mensaje, ruta, idTraza
+  Pass  Responde en menos de 2000 ms
+
+Folder 02 · Médicos
+Sub-folder Registrar médico (201)
+  POST http://localhost:5080/api/v1/medicos [201 Created, 618B, 2ms]
+  Pass  Código HTTP 201
+  Pass  Contenido en formato JSON
+  Pass  Estructura estándar de éxito: exito, mensaje, datos, marcaDeTiempo
+  Pass  Incluye la cabecera Location apuntando al nuevo recurso
+  Pass  El médico quedó activo y con su especialidad
+  Pass  Responde en menos de 2000 ms
+
+Sub-folder Listar médicos (200)
+  GET http://localhost:5080/api/v1/medicos [200 OK, 3.18kB, 1ms]
+  Pass  Código HTTP 200
+  Pass  Contenido en formato JSON
+  Pass  Estructura estándar de éxito: exito, mensaje, datos, marcaDeTiempo
+  Pass  La lista contiene al médico recién creado
+  Pass  Responde en menos de 2000 ms
+
+Sub-folder Filtrar médicos por especialidad (200)
+  GET http://localhost:5080/api/v1/medicos?especialidad=dermato [200 OK, 2.28kB, 2ms]
+  Pass  Código HTTP 200
+  Pass  Contenido en formato JSON
+  Pass  Estructura estándar de éxito: exito, mensaje, datos, marcaDeTiempo
+  Pass  Solo devuelve médicos cuya especialidad contiene 'dermato'
+  Pass  Responde en menos de 2000 ms
+
+Sub-folder Obtener médico por Id (200)
+  GET http://localhost:5080/api/v1/medicos/14 [200 OK, 548B, 2ms]
+  Pass  Código HTTP 200
+  Pass  Contenido en formato JSON
+  Pass  Estructura estándar de éxito: exito, mensaje, datos, marcaDeTiempo
+  Pass  Devuelve el médico solicitado
+  Pass  Responde en menos de 2000 ms
+
+Sub-folder Actualizar médico (200)
+  PUT http://localhost:5080/api/v1/medicos/14 [200 OK, 614B, 1ms]
+  Pass  Código HTTP 200
+  Pass  Contenido en formato JSON
+  Pass  Estructura estándar de éxito: exito, mensaje, datos, marcaDeTiempo
+  Pass  El teléfono quedó actualizado
+  Pass  Responde en menos de 2000 ms
+
+Sub-folder Registrar médico con datos inválidos (400)
+  POST http://localhost:5080/api/v1/medicos [400 Bad Request, 999B, 1ms]
+  Pass  Código HTTP 400
+  Pass  Contenido en formato JSON
+  Pass  Estructura estándar de error: exito=false, codigoEstado, titulo, mensaje, ruta, idTraza
+  Pass  Detalla el error de cada campo inválido
+  Pass  Responde en menos de 2000 ms
+
+Sub-folder Registrar médico con colegiatura duplicada (409)
+  POST http://localhost:5080/api/v1/medicos [409 Conflict, 490B, 2ms]
+  Pass  Código HTTP 409
+  Pass  Contenido en formato JSON
+  Pass  Estructura estándar de error: exito=false, codigoEstado, titulo, mensaje, ruta, idTraza
+  Pass  El mensaje menciona la colegiatura
+  Pass  Responde en menos de 2000 ms
+
+Sub-folder Obtener médico inexistente (404)
+  GET http://localhost:5080/api/v1/medicos/999999 [404 Not Found, 460B, 3ms]
+  Pass  Código HTTP 404
+  Pass  Contenido en formato JSON
+  Pass  Estructura estándar de error: exito=false, codigoEstado, titulo, mensaje, ruta, idTraza
+  Pass  El mensaje indica qué recurso no se encontró
+  Pass  Responde en menos de 2000 ms
+
+Sub-folder Registrar médico temporal (201)
+  POST http://localhost:5080/api/v1/medicos [201 Created, 625B, 2ms]
+  Pass  Código HTTP 201
+  Pass  Contenido en formato JSON
+  Pass  Estructura estándar de éxito: exito, mensaje, datos, marcaDeTiempo
+  Pass  Responde en menos de 2000 ms
+
+Sub-folder Eliminar médico sin citas (204)
+  DELETE http://localhost:5080/api/v1/medicos/15 [204 No Content, 81B, 1ms]
+  Pass  Código HTTP 204 (No Content)
+  Pass  La respuesta no tiene cuerpo
+  Pass  Responde en menos de 2000 ms
+
+Sub-folder Verificar que el médico eliminado ya no existe (404)
+  GET http://localhost:5080/api/v1/medicos/15 [404 Not Found, 452B, 2ms]
+  Pass  Código HTTP 404
+  Pass  Contenido en formato JSON
+  Pass  Estructura estándar de error: exito=false, codigoEstado, titulo, mensaje, ruta, idTraza
+  Pass  Responde en menos de 2000 ms
+
+Folder 03 · Citas
+Sub-folder Registrar cita (201)
+  POST http://localhost:5080/api/v1/citas [201 Created, 695B, 2ms]
+  Pass  Código HTTP 201
+  Pass  Contenido en formato JSON
+  Pass  Estructura estándar de éxito: exito, mensaje, datos, marcaDeTiempo
+  Pass  Incluye la cabecera Location apuntando a la nueva cita
+  Pass  La cita nace Programada, con nombres de paciente y médico (como un JOIN)
+  Pass  La hora de fin = inicio + 30 minutos
+  Pass  Responde en menos de 2000 ms
+
+Sub-folder Listar citas (200)
+  GET http://localhost:5080/api/v1/citas [200 OK, 3.76kB, 2ms]
+  Pass  Código HTTP 200
+  Pass  Contenido en formato JSON
+  Pass  Estructura estándar de éxito: exito, mensaje, datos, marcaDeTiempo
+  Pass  La lista contiene la cita recién creada
+  Pass  Responde en menos de 2000 ms
+
+Sub-folder Listar citas con filtros combinados (200)
+  GET http://localhost:5080/api/v1/citas?estado=Programada&medicoId=14&fecha=2026-10-21 [200 OK, 638B, 1ms]
+  Pass  Código HTTP 200
+  Pass  Contenido en formato JSON
+  Pass  Estructura estándar de éxito: exito, mensaje, datos, marcaDeTiempo
+  Pass  Todas las citas devueltas cumplen los filtros
+  Pass  Responde en menos de 2000 ms
+
+Sub-folder Obtener cita por Id (200)
+  GET http://localhost:5080/api/v1/citas/14 [200 OK, 627B, 1ms]
+  Pass  Código HTTP 200
+  Pass  Contenido en formato JSON
+  Pass  Estructura estándar de éxito: exito, mensaje, datos, marcaDeTiempo
+  Pass  Devuelve la cita solicitada
+  Pass  Responde en menos de 2000 ms
+
+Sub-folder Reprogramar cita (200)
+  PUT http://localhost:5080/api/v1/citas/14 [200 OK, 714B, 2ms]
+  Pass  Código HTTP 200
+  Pass  Contenido en formato JSON
+  Pass  Estructura estándar de éxito: exito, mensaje, datos, marcaDeTiempo
+  Pass  La cita quedó reprogramada a las 11:00 con 45 minutos
+  Pass  Responde en menos de 2000 ms
+
+Sub-folder Confirmar cita (200)
+  PATCH http://localhost:5080/api/v1/citas/14/confirmar [200 OK, 713B, 1ms]
+  Pass  Código HTTP 200
+  Pass  Contenido en formato JSON
+  Pass  Estructura estándar de éxito: exito, mensaje, datos, marcaDeTiempo
+  Pass  El estado cambió a Confirmada
+  Pass  Responde en menos de 2000 ms
+
+Sub-folder Confirmar una cita ya confirmada (409)
+  PATCH http://localhost:5080/api/v1/citas/14/confirmar [409 Conflict, 528B, 2ms]
+  Pass  Código HTTP 409
+  Pass  Contenido en formato JSON
+  Pass  Estructura estándar de error: exito=false, codigoEstado, titulo, mensaje, ruta, idTraza
+  Pass  Explica la regla de la transición
+  Pass  Responde en menos de 2000 ms
+
+Sub-folder Registrar cita en horario ocupado (409)
+  POST http://localhost:5080/api/v1/citas [409 Conflict, 528B, 2ms]
+  Pass  Código HTTP 409
+  Pass  Contenido en formato JSON
+  Pass  Estructura estándar de error: exito=false, codigoEstado, titulo, mensaje, ruta, idTraza
+  Pass  Indica que el médico ya tiene una cita en ese horario
+  Pass  Responde en menos de 2000 ms
+
+Sub-folder Registrar cita fuera del horario de atención (422)
+  POST http://localhost:5080/api/v1/citas [422 Unprocessable Entity, 527B, 1ms]
+  Pass  Código HTTP 422
+  Pass  Contenido en formato JSON
+  Pass  Estructura estándar de error: exito=false, codigoEstado, titulo, mensaje, ruta, idTraza
+  Pass  Menciona el horario de atención
+  Pass  Responde en menos de 2000 ms
+
+Sub-folder Registrar cita en domingo (422)
+  POST http://localhost:5080/api/v1/citas [422 Unprocessable Entity, 480B, 3ms]
+  Pass  Código HTTP 422
+  Pass  Contenido en formato JSON
+  Pass  Estructura estándar de error: exito=false, codigoEstado, titulo, mensaje, ruta, idTraza
+  Pass  Menciona que no se atiende en domingo
+  Pass  Responde en menos de 2000 ms
+
+Sub-folder Registrar cita con fecha pasada (400)
+  POST http://localhost:5080/api/v1/citas [400 Bad Request, 529B, 2ms]
+  Pass  Código HTTP 400
+  Pass  Contenido en formato JSON
+  Pass  Estructura estándar de error: exito=false, codigoEstado, titulo, mensaje, ruta, idTraza
+  Pass  El error está asociado al campo fechaHora
+  Pass  Responde en menos de 2000 ms
+
+Sub-folder Registrar cita con paciente inexistente (404)
+  POST http://localhost:5080/api/v1/citas [404 Not Found, 452B, 2ms]
+  Pass  Código HTTP 404
+  Pass  Contenido en formato JSON
+  Pass  Estructura estándar de error: exito=false, codigoEstado, titulo, mensaje, ruta, idTraza
+  Pass  Indica que el paciente no existe
+  Pass  Responde en menos de 2000 ms
+
+Sub-folder Registrar cita con datos inválidos (400)
+  POST http://localhost:5080/api/v1/citas [400 Bad Request, 757B, 2ms]
+  Pass  Código HTTP 400
+  Pass  Contenido en formato JSON
+  Pass  Estructura estándar de error: exito=false, codigoEstado, titulo, mensaje, ruta, idTraza
+  Pass  Detalla el error de cada campo
+  Pass  Responde en menos de 2000 ms
+
+Sub-folder Ruta jerárquica: citas de un paciente (200)
+  GET http://localhost:5080/api/v1/pacientes/14/citas?estado=Confirmada [200 OK, 713B, 1ms]
+  Pass  Código HTTP 200
+  Pass  Contenido en formato JSON
+  Pass  Estructura estándar de éxito: exito, mensaje, datos, marcaDeTiempo
+  Pass  Devuelve solo citas Confirmadas del paciente, incluida la nuestra
+  Pass  Responde en menos de 2000 ms
+
+Sub-folder Ruta jerárquica: agenda de un médico por día (200)
+  GET http://localhost:5080/api/v1/medicos/14/citas?fecha=2026-10-21 [200 OK, 712B, 2ms]
+  Pass  Código HTTP 200
+  Pass  Contenido en formato JSON
+  Pass  Estructura estándar de éxito: exito, mensaje, datos, marcaDeTiempo
+  Pass  La agenda incluye nuestra cita y solo de ese médico
+  Pass  Responde en menos de 2000 ms
+
+Sub-folder Ruta jerárquica: citas de un paciente inexistente (404)
+  GET http://localhost:5080/api/v1/pacientes/999999/citas [404 Not Found, 469B, 3ms]
+  Pass  Código HTTP 404
+  Pass  Contenido en formato JSON
+  Pass  Estructura estándar de error: exito=false, codigoEstado, titulo, mensaje, ruta, idTraza
+  Pass  Responde en menos de 2000 ms
+
+Sub-folder Eliminar paciente con citas registradas (409)
+  DELETE http://localhost:5080/api/v1/pacientes/14 [409 Conflict, 556B, 2ms]
+  Pass  Código HTTP 409
+  Pass  Contenido en formato JSON
+  Pass  Estructura estándar de error: exito=false, codigoEstado, titulo, mensaje, ruta, idTraza
+  Pass  Explica que tiene citas registradas
+  Pass  Responde en menos de 2000 ms
+
+Sub-folder Eliminar médico con citas registradas (409)
+  DELETE http://localhost:5080/api/v1/medicos/14 [409 Conflict, 579B, 8ms]
+  Pass  Código HTTP 409
+  Pass  Contenido en formato JSON
+  Pass  Estructura estándar de error: exito=false, codigoEstado, titulo, mensaje, ruta, idTraza
+  Pass  Explica que tiene citas registradas
+  Pass  Responde en menos de 2000 ms
+
+Sub-folder Cancelar cita sin indicar el motivo (400)
+  PATCH http://localhost:5080/api/v1/citas/14/cancelar [400 Bad Request, 583B, 2ms]
+  Pass  Código HTTP 400
+  Pass  Contenido en formato JSON
+  Pass  Estructura estándar de error: exito=false, codigoEstado, titulo, mensaje, ruta, idTraza
+  Pass  El error está asociado al campo motivo
+  Pass  Responde en menos de 2000 ms
+
+Sub-folder Cancelar cita (200)
+  PATCH http://localhost:5080/api/v1/citas/14/cancelar [200 OK, 761B, 2ms]
+  Pass  Código HTTP 200
+  Pass  Contenido en formato JSON
+  Pass  Estructura estándar de éxito: exito, mensaje, datos, marcaDeTiempo
+  Pass  La cita quedó Cancelada con su motivo
+  Pass  Responde en menos de 2000 ms
+
+Sub-folder Confirmar una cita cancelada (409)
+  PATCH http://localhost:5080/api/v1/citas/14/confirmar [409 Conflict, 527B, 2ms]
+  Pass  Código HTTP 409
+  Pass  Contenido en formato JSON
+  Pass  Estructura estándar de error: exito=false, codigoEstado, titulo, mensaje, ruta, idTraza
+  Pass  Responde en menos de 2000 ms
+
+Sub-folder Reprogramar una cita cancelada (409)
+  PUT http://localhost:5080/api/v1/citas/14 [409 Conflict, 544B, 2ms]
+  Pass  Código HTTP 409
+  Pass  Contenido en formato JSON
+  Pass  Estructura estándar de error: exito=false, codigoEstado, titulo, mensaje, ruta, idTraza
+  Pass  Explica que no se puede modificar
+  Pass  Responde en menos de 2000 ms
+
+Sub-folder Eliminar cita (204)
+  DELETE http://localhost:5080/api/v1/citas/14 [204 No Content, 81B, 2ms]
+  Pass  Código HTTP 204 (No Content)
+  Pass  La respuesta no tiene cuerpo
+  Pass  Responde en menos de 2000 ms
+
+Sub-folder Verificar que la cita eliminada ya no existe (404)
+  GET http://localhost:5080/api/v1/citas/14 [404 Not Found, 447B, 1ms]
+  Pass  Código HTTP 404
+  Pass  Contenido en formato JSON
+  Pass  Estructura estándar de error: exito=false, codigoEstado, titulo, mensaje, ruta, idTraza
+  Pass  Responde en menos de 2000 ms
+
+Sub-folder Registrar segunda cita para el flujo 'Atendida' (201)
+  POST http://localhost:5080/api/v1/citas [201 Created, 689B, 2ms]
+  Pass  Código HTTP 201
+  Pass  Contenido en formato JSON
+  Pass  Estructura estándar de éxito: exito, mensaje, datos, marcaDeTiempo
+  Pass  Responde en menos de 2000 ms
+
+Sub-folder Marcar cita como atendida (200)
+  PATCH http://localhost:5080/api/v1/citas/15/atender [200 OK, 681B, 14ms]
+  Pass  Código HTTP 200
+  Pass  Contenido en formato JSON
+  Pass  Estructura estándar de éxito: exito, mensaje, datos, marcaDeTiempo
+  Pass  El estado cambió a Atendida
+  Pass  Responde en menos de 2000 ms
+
+Sub-folder Eliminar una cita atendida (409)
+  DELETE http://localhost:5080/api/v1/citas/15 [409 Conflict, 526B, 3ms]
+  Pass  Código HTTP 409
+  Pass  Contenido en formato JSON
+  Pass  Estructura estándar de error: exito=false, codigoEstado, titulo, mensaje, ruta, idTraza
+  Pass  Menciona el historial clínico
+  Pass  Responde en menos de 2000 ms
+
+Sub-folder Cancelar una cita atendida (409)
+  PATCH http://localhost:5080/api/v1/citas/15/cancelar [409 Conflict, 551B, 2ms]
+  Pass  Código HTTP 409
+  Pass  Contenido en formato JSON
+  Pass  Estructura estándar de error: exito=false, codigoEstado, titulo, mensaje, ruta, idTraza
+  Pass  Responde en menos de 2000 ms
+
+Folder 04 · Manejo centralizado de errores
+Sub-folder Ruta inexistente (404)
+  GET http://localhost:5080/api/v1/citass [404 Not Found, 437B, 1ms]
+  Pass  Código HTTP 404
+  Pass  Contenido en formato JSON
+  Pass  Estructura estándar de error: exito=false, codigoEstado, titulo, mensaje, ruta, idTraza
+  Pass  Título de ruta no encontrada
+  Pass  Responde en menos de 2000 ms
+
+Sub-folder Método HTTP no permitido (405)
+  DELETE http://localhost:5080/api/v1/citas [405 Method Not Allowed, 431B, 1ms]
+  Pass  Código HTTP 405
+  Pass  Contenido en formato JSON
+  Pass  Estructura estándar de error: exito=false, codigoEstado, titulo, mensaje, ruta, idTraza
+  Pass  Título de método no permitido
+  Pass  Responde en menos de 2000 ms
+
+Sub-folder JSON mal formado (400)
+  POST http://localhost:5080/api/v1/citas [400 Bad Request, 513B, 1ms]
+  Pass  Código HTTP 400
+  Pass  Contenido en formato JSON
+  Pass  Estructura estándar de error: exito=false, codigoEstado, titulo, mensaje, ruta, idTraza
+  Pass  Mensaje claro en el campo 'cuerpo'
+  Pass  Responde en menos de 2000 ms
+
+Sub-folder Tipo de dato incorrecto (400)
+  POST http://localhost:5080/api/v1/citas [400 Bad Request, 552B, 1ms]
+  Pass  Código HTTP 400
+  Pass  Contenido en formato JSON
+  Pass  Estructura estándar de error: exito=false, codigoEstado, titulo, mensaje, ruta, idTraza
+  Pass  Indica el campo con formato incorrecto
+  Pass  Responde en menos de 2000 ms
+
+Sub-folder Solicitud sin cuerpo (400)
+  POST http://localhost:5080/api/v1/citas [400 Bad Request, 527B, 1ms]
+  Pass  Código HTTP 400
+  Pass  Contenido en formato JSON
+  Pass  Estructura estándar de error: exito=false, codigoEstado, titulo, mensaje, ruta, idTraza
+  Pass  Responde en menos de 2000 ms
+
+Sub-folder Tipo de contenido no soportado (415)
+  POST http://localhost:5080/api/v1/citas [415 Unsupported Media Type, 449B, 1ms]
+  Pass  Código HTTP 415
+  Pass  Contenido en formato JSON
+  Pass  Estructura estándar de error: exito=false, codigoEstado, titulo, mensaje, ruta, idTraza
+  Pass  Título de tipo de contenido no soportado
+  Pass  Responde en menos de 2000 ms
+
+Sub-folder Filtro con valor inválido (400)
+  GET http://localhost:5080/api/v1/citas?estado=XYZ [400 Bad Request, 502B, 2ms]
+  Pass  Código HTTP 400
+  Pass  Contenido en formato JSON
+  Pass  Estructura estándar de error: exito=false, codigoEstado, titulo, mensaje, ruta, idTraza
+  Pass  Indica el campo estado
+  Pass  Responde en menos de 2000 ms
+
+---------------------------------------------------------------
+|                         |        executed |          failed |
+--------------------------+-----------------+------------------
+|              iterations |               1 |               0 |
+--------------------------+-----------------+------------------
+|                requests |              58 |               0 |
+--------------------------+-----------------+------------------
+|            test-scripts |              58 |               0 |
+--------------------------+-----------------+------------------
+|      prerequest-scripts |              63 |               0 |
+--------------------------+-----------------+------------------
+|              assertions |             276 |               0 |
+---------------------------------------------------------------
+| total run duration: 1391ms                                  |
+---------------------------------------------------------------
+| total data received: 31.63kB (approx)                       |
+---------------------------------------------------------------
+| average response time: 2ms [min: 1ms, max: 21ms, s.d.: 3ms] |
+---------------------------------------------------------------

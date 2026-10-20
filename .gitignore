@@ -1,0 +1,14 @@
+# Compilación
+bin/
+obj/
+# IDEs
+.vs/
+.vscode/
+.idea/
+*.user
+*.suo
+# Sistema operativo
+.DS_Store
+Thumbs.db
+# Resultados temporales
+TestResults/

@@ -448,21 +448,34 @@ newman run docs/postman/ClinicaCitas.postman_collection.json \
 
 | Peticiones | Aserciones | Fallidas | Tiempo promedio de respuesta |
 |---|---|---|---|
-| 58 | 276 | **0** | 2 ms |
+| 58 | 276 | **0** | 8 ms |
 
 > Las fechas, DNI y colegiaturas se **generan dinámicamente** en cada ejecución, así que la colección puede correrse varias veces seguidas (se verificó con 3 iteraciones consecutivas: 828 aserciones, 0 fallos).
 
 ### 📸 Capturas de las pruebas
 
-Guarda aquí las capturas tomadas en Postman (carpeta [`docs/capturas`](docs/capturas)):
+Evidencias de una ejecución real sobre `http://localhost:5080` (carpeta [`docs/capturas`](docs/capturas)). Pueden complementarse con capturas de la interfaz de Postman (*Collection Runner*).
 
-| Captura | Qué debe mostrar |
+| Captura | Qué muestra |
 |---|---|
-| `01-collection-runner.png` | Resultado del *Collection Runner* (58 peticiones, tests en verde) |
-| `02-registrar-cita-201.png` | `POST /citas` → 201 con el cuerpo y la cabecera `Location` |
-| `03-horario-ocupado-409.png` | `POST /citas` en horario ocupado → 409 |
-| `04-validacion-400.png` | Error de validación con el detalle por campo |
-| `05-swagger.png` | Swagger UI con todos los endpoints |
+| [`00_newman_resumen.png`](docs/capturas/00_newman_resumen.png) | Resumen de la colección (58 peticiones, 276 aserciones, 0 fallos) |
+| [`01_get_citas.png`](docs/capturas/01_get_citas.png) | GET /citas → 200 |
+| [`02_post_paciente.png`](docs/capturas/02_post_paciente.png) | POST /pacientes → 201 + Location |
+| [`03_post_cita.png`](docs/capturas/03_post_cita.png) | POST /citas → 201 |
+| [`04_get_cita.png`](docs/capturas/04_get_cita.png) | GET /citas/{id} → 200 |
+| [`05_put_cita.png`](docs/capturas/05_put_cita.png) | PUT /citas/{id} → 200 |
+| [`06_confirmar.png`](docs/capturas/06_confirmar.png) | PATCH /citas/{id}/confirmar → 200 |
+| [`07_conflicto_409.png`](docs/capturas/07_conflicto_409.png) | Horario ocupado → 409 |
+| [`08_validacion_400.png`](docs/capturas/08_validacion_400.png) | Validación por campo → 400 |
+| [`09_domingo_422.png`](docs/capturas/09_domingo_422.png) | Domingo → 422 |
+| [`10_cancelar.png`](docs/capturas/10_cancelar.png) | PATCH /citas/{id}/cancelar → 200 |
+| [`11_delete_204.png`](docs/capturas/11_delete_204.png) | DELETE /citas/{id} → 204 |
+| [`12_get_404.png`](docs/capturas/12_get_404.png) | Cita inexistente → 404 |
+| [`13_filtro.png`](docs/capturas/13_filtro.png) | Filtros combinados → 200 |
+| [`14_agenda_medico.png`](docs/capturas/14_agenda_medico.png) | GET /medicos/{id}/citas → 200 |
+| [`15_json_malformado.png`](docs/capturas/15_json_malformado.png) | JSON mal formado → 400 |
+
+![Resumen de la ejecución](docs/capturas/00_newman_resumen.png)
 
 ## 13. Configuración
 

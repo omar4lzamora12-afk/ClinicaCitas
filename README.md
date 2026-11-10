@@ -14,12 +14,10 @@ Curso: Desarrollo de Servicios Web – Docente: Ing. Jhorlly Vela
 
 ## Requisitos
 
-- [.NET SDK](https://dotnet.microsoft.com/es-es/download) (verificar con `dotnet --version`)
+- [.NET SDK](https://dotnet.microsoft.com/es-es/download)
 - Visual Studio Code con la extensión C# Dev Kit
 - Postman
 - Git
-
-> El proyecto apunta a `net8.0`. Si tu SDK es de otra versión, abre `ClinicaCitasApi.csproj` y cambia `<TargetFramework>net8.0</TargetFramework>` por la versión mayor que muestra `dotnet --version` (por ejemplo `net9.0`).
 
 ## Instalación y ejecución
 
@@ -31,7 +29,7 @@ dotnet build
 dotnet run
 ```
 
-La API queda escuchando en **http://localhost:5080**. Para detenerla: `CTRL + C`.
+La API queda escuchando en **http://localhost:5080**.
 
 ## Estructura del proyecto
 
@@ -119,8 +117,7 @@ Datos iniciales: pacientes con Id 1 y 2, médicos con Id 1, 2 y 3.
 }
 ```
 
-## Validaciones (DataAnnotations)
-
+## Validaciones
 - **Cita:** `PacienteId` y `MedicoId` válidos (`[Range]`), `FechaHora` obligatoria (`[Required]`), `Motivo` de 5 a 200 caracteres (`[Required]`, `[StringLength]`).
 - **Paciente:** nombre 2–50 caracteres, DNI de 8 dígitos (`[RegularExpression]`), email válido (`[EmailAddress]`), teléfono de 9 dígitos que empieza con 9.
 - **Médico:** nombre 2–50 caracteres, especialidad 3–50 caracteres.
@@ -169,5 +166,3 @@ git branch -M main
 git remote add origin https://github.com/<usuario>/ClinicaCitasApi.git
 git push -u origin main
 ```
-
-Recordar dar acceso de lectura al docente en *Settings → Collaborators* (o dejar el repositorio público).

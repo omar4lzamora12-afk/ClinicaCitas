@@ -7,7 +7,7 @@ var Builder = WebApplication.CreateBuilder(args);
 // 2. Registra los controladores de la API
 Builder.Services.AddControllers();
 
-// 3. Registra los servicios (DIP: los controladores piden la interfaz, no la clase concreta).
+// 3. Registra los servicios.
 // Se usa AddSingleton porque los datos viven en listas en memoria y deben mantenerse
 // mientras la aplicación esté en ejecución.
 Builder.Services.AddSingleton<IPacienteService, PacienteService>();

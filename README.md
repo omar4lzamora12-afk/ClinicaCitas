@@ -22,7 +22,7 @@ Curso: Desarrollo de Servicios Web – Docente: Ing. Jhorlly Vela
 ## Instalación y ejecución
 
 ```bash
-git clone https://github.com/<usuario>/ClinicaCitasApi.git
+git clone https://github.com/omar4lzamora12-afk/ClinicaCitas.git
 cd ClinicaCitasApi
 code .
 dotnet build
